@@ -56,7 +56,7 @@ async function verificarAcceso() {
         const res = await llamarAPI({ accion: "verificarPassword", payload: { pass, destino: "jefatura" } });
         if (res && res.ok) {
             localStorage.setItem("auth_jefatura", "true");
-            document.getElementById('modalPassword').style.display = 'none';
+            _ocultarModalPass();
             iniciarJefatura();
         } else {
             document.getElementById('pass-error').style.display   = 'block';
@@ -404,8 +404,7 @@ async function sincronizarHistorialEnZonasDesdeApp() {
 window.addEventListener('load', () => {
     NavBar.init({ paginaActual: 'jefatura', mostrarBottomNav: false });
 
-    // Añadir botón Historial Anual al nav — empieza en "Cargando..."
-    // Se actualiza cuando iniciarJefatura() termina de cargar los datos
+    // Añadir botón Historial al nav
     const navDer = document.querySelector('.nav-derecha');
     if (navDer) {
         const btnH = document.createElement('button');
@@ -417,12 +416,38 @@ window.addEventListener('load', () => {
         navDer.prepend(btnH);
     }
 
-    // Si ya tiene sesión activa, saltear password
+    // ── Verificar acceso ──────────────────────────────────
     if (localStorage.getItem("auth_jefatura") === 'true') {
-        document.getElementById('modalPassword').style.display = 'none';
+        // Ya autenticado: ocultar modal e iniciar
+        _ocultarModalPass();
         iniciarJefatura();
+    } else {
+        // Sin sesión: mostrar modal de contraseña
+        _mostrarModalPass();
     }
 });
+
+function _mostrarModalPass() {
+    const modal = document.getElementById('modalPassword');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    // Esperar un frame para que la transición funcione
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => { modal.classList.add('mostrar'); });
+    });
+    // Ocultar el status de "Verificando..."
+    const st = document.getElementById('status-jefatura');
+    if (st) st.style.display = 'none';
+    // Focus en el input
+    setTimeout(() => { document.getElementById('input-pass')?.focus(); }, 300);
+}
+
+function _ocultarModalPass() {
+    const modal = document.getElementById('modalPassword');
+    if (!modal) return;
+    modal.classList.remove('mostrar');
+    setTimeout(() => { modal.style.display = 'none'; }, 250);
+}
 
 // Activa el botón de historial una vez que los datos cargan
 function activarBotonHistorial() {

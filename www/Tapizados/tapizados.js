@@ -54,7 +54,7 @@ async function verificarAcceso() {
         if (res && res.ok) {
             if (res.isJefe) localStorage.setItem("auth_jefatura", "true");
             localStorage.setItem("auth_tapizados", "true");
-            document.getElementById('modalPassword').style.display = 'none';
+            _ocultarModalPass();
             iniciarTapizados();
         } else {
             document.getElementById('pass-error').style.display = 'block';
@@ -301,11 +301,32 @@ function marcarPresupuestoEnviado() {
 window.addEventListener('load', () => {
     NavBar.init({ paginaActual: 'tapizados', mostrarBottomNav: false });
 
-    const hasJefe    = localStorage.getItem("auth_jefatura")  === 'true';
-    const hasTapiz   = localStorage.getItem("auth_tapizados") === 'true';
+    const hasJefe  = localStorage.getItem("auth_jefatura")  === 'true';
+    const hasTapiz = localStorage.getItem("auth_tapizados") === 'true';
 
     if (hasJefe || hasTapiz) {
-        document.getElementById('modalPassword').style.display = 'none';
+        _ocultarModalPass();
         iniciarTapizados();
+    } else {
+        _mostrarModalPass();
     }
 });
+
+function _mostrarModalPass() {
+    const modal = document.getElementById('modalPassword');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => { modal.classList.add('mostrar'); });
+    });
+    const st = document.getElementById('status-tapizados');
+    if (st) st.style.display = 'none';
+    setTimeout(() => { document.getElementById('input-pass')?.focus(); }, 300);
+}
+
+function _ocultarModalPass() {
+    const modal = document.getElementById('modalPassword');
+    if (!modal) return;
+    modal.classList.remove('mostrar');
+    setTimeout(() => { modal.style.display = 'none'; }, 250);
+}
