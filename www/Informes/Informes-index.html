@@ -19,6 +19,16 @@
             min-width: unset !important;
         }
 
+        /* ── Animación shake para contraseña incorrecta ── */
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            20%,60% { transform: translateX(-8px); }
+            40%,80% { transform: translateX(8px); }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         /* ── Animaciones generales ── */
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(16px); }
@@ -513,13 +523,83 @@
         <img id="modal-img-preview-src" src="" alt="Vista ampliada" onclick="event.stopPropagation()">
     </div>
 
+    <!-- ── MODAL PASSWORD INFORMES ── -->
+    <div id="modalPassword" class="modal-overlay">
+        <div class="modal-content" style="max-width:370px; text-align:center; padding:35px 25px; border-radius:20px;">
+            <div style="font-size:48px; margin-bottom:10px;">📄</div>
+            <h2 style="color:#1a73e8; margin-top:0; font-size:22px; font-weight:900;">Acceso Informes</h2>
+            <p style="color:#5f6368; font-size:14px; margin-bottom:22px; line-height:1.5;">
+                Ingresá la clave para acceder a los informes y presupuestos.
+            </p>
+            <input type="password" id="input-pass" placeholder="Contraseña..."
+                   style="width:100%; padding:14px; border:2px solid #dadce0; border-radius:10px;
+                          font-size:16px; margin-bottom:14px; text-align:center; outline:none;
+                          box-sizing:border-box; transition:border-color 0.2s;"
+                   onfocus="this.style.borderColor='#1a73e8'"
+                   onblur="this.style.borderColor='#dadce0'"
+                   onkeydown="if(event.key==='Enter') verificarAccesoInformes()">
+
+            <button onclick="verificarAccesoInformes()"
+                    id="btn-ingresar-inf"
+                    style="width:100%; padding:14px; background:#1a73e8; color:white; border:none;
+                           border-radius:10px; font-size:15px; font-weight:900; cursor:pointer;
+                           transition:all 0.2s; box-shadow:0 4px 14px rgba(26,115,232,0.35); margin-bottom:10px;"
+                    onmouseover="this.style.background='#1557b0'"
+                    onmouseout="this.style.background='#1a73e8'">
+                Ingresar →
+            </button>
+
+            <button onclick="NavBar.navegarA('formulario')"
+                    style="width:100%; padding:11px; background:transparent; color:#5f6368; border:1.5px solid #dadce0;
+                           border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.2s;"
+                    onmouseover="this.style.background='#f1f3f4'"
+                    onmouseout="this.style.background='transparent'">
+                ◀ Volver al Formulario
+            </button>
+
+            <!-- Estado: Verificando -->
+            <div id="pass-loading"
+                 style="display:none; color:#1a73e8; font-weight:bold; font-size:14px;
+                        margin-top:14px; display:none; align-items:center; justify-content:center; gap:8px;">
+                <span style="display:inline-block; width:16px; height:16px; border:2px solid #1a73e8;
+                             border-top-color:transparent; border-radius:50%;
+                             animation:spin 0.7s linear infinite;"></span>
+                Verificando...
+            </div>
+
+            <!-- Estado: Error -->
+            <div id="pass-error"
+                 style="display:none; color:#d93025; background:#fce8e6; padding:12px;
+                        border-radius:10px; font-weight:bold; font-size:14px;
+                        margin-top:14px; border:1px solid #f28b82;
+                        animation: shake 0.4s ease;">
+                ❌ Contraseña incorrecta. Intentá de nuevo.
+            </div>
+
+            <!-- Estado: Éxito -->
+            <div id="pass-ok"
+                 style="display:none; color:#0f9d58; background:#e6f4ea; padding:12px;
+                        border-radius:10px; font-weight:bold; font-size:14px;
+                        margin-top:14px; border:1px solid #ceead6;">
+                ✅ Acceso concedido. Cargando...
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes spin  { to { transform: rotate(360deg); } }
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            20%,60% { transform: translateX(-8px); }
+            40%,80% { transform: translateX(8px); }
+        }
+    </style>
+
     <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()" title="Modo Oscuro">🌙</button>
 
     <script>
         NavBar.init({ paginaActual: 'informes', mostrarBottomNav: false });
 
-        // ── Previsualización de imágenes al cargar items ──────────────────
-        // Esta función se llama desde Informes-app.js al seleccionar archivos en un ítem
         window.mostrarPreviaImagen = function(url) {
             const modal = document.getElementById('modal-img-preview');
             document.getElementById('modal-img-preview-src').src = url;

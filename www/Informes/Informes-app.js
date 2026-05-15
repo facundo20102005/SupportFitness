@@ -226,19 +226,108 @@ document.addEventListener('visibilitychange', () => {
 // =============================================================================
 // 🔥 1. INICIALIZACIÓN AL CARGAR LA APP 🔥
 // =============================================================================
+// ── Auth helpers Informes ─────────────────────────────────
+function _mostrarModalPassInf() {
+    const modal = document.getElementById('modalPassword');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('mostrar')));
+    setTimeout(() => document.getElementById('input-pass')?.focus(), 300);
+}
+function _ocultarModalPassInf() {
+    const modal = document.getElementById('modalPassword');
+    if (!modal) return;
+    modal.classList.remove('mostrar');
+    setTimeout(() => { modal.style.display = 'none'; }, 250);
+}
+
+async function verificarAccesoInformes() {
+    const pass      = (document.getElementById('input-pass')?.value || '').trim();
+    const btnIng    = document.getElementById('btn-ingresar-inf');
+    const loadingEl = document.getElementById('pass-loading');
+    const errorEl   = document.getElementById('pass-error');
+    const okEl      = document.getElementById('pass-ok');
+    const inputEl   = document.getElementById('input-pass');
+
+    if (!pass) { inputEl.style.borderColor = '#d93025'; return; }
+
+    // Reset estados
+    errorEl.style.display  = 'none';
+    okEl.style.display     = 'none';
+    loadingEl.style.display = 'flex';
+    if (btnIng) { btnIng.disabled = true; btnIng.style.opacity = '0.6'; }
+
+    try {
+        const res = await llamarAPI({ accion: "verificarPassword", payload: { pass, destino: "jefatura" } });
+
+        if (res && res.ok) {
+            // ✅ Correcto
+            loadingEl.style.display = 'none';
+            okEl.style.display      = 'block';
+            inputEl.style.borderColor = '#0f9d58';
+            if (res.isJefe) localStorage.setItem('auth_jefatura', 'true');
+            localStorage.setItem('auth_informes', 'true');
+
+            setTimeout(() => {
+                _ocultarModalPassInf();
+                cargarAppInformes();
+            }, 900);
+    } else {
+            // ❌ Incorrecto
+            loadingEl.style.display = 'none';
+            errorEl.style.display   = 'block';
+            inputEl.style.borderColor = '#d93025';
+            // Animación shake en el input
+            inputEl.style.animation = 'none';
+            requestAnimationFrame(() => { inputEl.style.animation = 'shake 0.4s ease'; });
+            inputEl.value = '';
+            setTimeout(() => { inputEl.style.borderColor = '#dadce0'; inputEl.focus(); }, 1000);
+            if (btnIng) { btnIng.disabled = false; btnIng.style.opacity = '1'; }
+        }
+    } catch(e) {
+        loadingEl.style.display  = 'none';
+        errorEl.innerText        = '❌ Error de conexión. Revisá tu internet.';
+        errorEl.style.display    = 'block';
+        if (btnIng) { btnIng.disabled = false; btnIng.style.opacity = '1'; }
+    }
+    }
+
+// ── Carga principal de la app (solo se ejecuta post-auth) ──
+async function cargarAppInformes() {
+    obtenerDolar();
+
+    try {
+        listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
+        let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
+        listaAbonosBase.forEach(abono => {
+            let cuitLimpio = String(abono.cuit).replace(/\D/g, ""); 
+            if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym; 
+            if (!globalGymsOfertas.includes(abono.gym)) globalGymsOfertas.push(abono.gym);
+            if (!globalGymsPresupuestos.includes(abono.gym)) globalGymsPresupuestos.push(abono.gym);
+        });
+        localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
+    } catch(e) { console.log("Error cargando abonos base", e); }
+
+    const hoy = new Date();
+    const mm  = String(hoy.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(hoy.getFullYear());
+    if (document.getElementById('sel-mes-abono'))     document.getElementById('sel-mes-abono').value = mm;
+    if (document.getElementById('sel-anio-abono'))    document.getElementById('sel-anio-abono').value = yyyy;
+    if (document.getElementById('selector-mes-abono')) document.getElementById('selector-mes-abono').value = `${yyyy}-${mm}`;
+
+    await cargarDatosBase();
+}
+
 window.addEventListener('load', async () => {
-    
-    // 🔥 Inicializar menú compartido (nav.js) 🔥
+
+    // NavBar (sin auth — se inicializa siempre para mostrar el menú)
     if (typeof NavBar !== 'undefined') {
         NavBar.init({ paginaActual: 'informes', mostrarBottomNav: false });
     } else {
-        // Fallback si nav.js no está disponible
-        if (localStorage.getItem('darkMode') === 'yes') {
-            document.body.classList.add('dark-mode');
-        }
+        if (localStorage.getItem('darkMode') === 'yes') document.body.classList.add('dark-mode');
     }
 
-    // 🔥 Mostrar valor del caché mientras llega el real 🔥
+    // Mostrar caché del dólar mientras esperamos
     const cachedDolar = (() => {
         try { return JSON.parse(localStorage.getItem('dolar_oficial_cache')); }
         catch(e) { return null; }
@@ -248,34 +337,17 @@ window.addEventListener('load', async () => {
         actualizarDisplayDolar(true, 'caché');
     }
 
-    // Obtener el dólar real (no bloquea el resto de la carga)
-    obtenerDolar(); // sin await — carga en paralelo
+    // ── Verificar acceso ──────────────────────────────────────
+    const tieneAcceso = localStorage.getItem('auth_informes')  === 'true' ||
+                        localStorage.getItem('auth_jefatura')  === 'true';
 
-    try {
-        listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
-        let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
-        
-        listaAbonosBase.forEach(abono => {
-            let cuitLimpio = String(abono.cuit).replace(/\D/g, ""); 
-            if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym; 
-            if (!globalGymsOfertas.includes(abono.gym)) globalGymsOfertas.push(abono.gym);
-            if (!globalGymsPresupuestos.includes(abono.gym)) globalGymsPresupuestos.push(abono.gym);
-        });
-        localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
-        
-    } catch(e) { console.log("Error cargando abonos base", e); }
-
-    // Inicializamos los nuevos botones de fecha
-    const hoy = new Date();
-    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(hoy.getFullYear());
-    if(document.getElementById('sel-mes-abono')) document.getElementById('sel-mes-abono').value = mm;
-    if(document.getElementById('sel-anio-abono')) document.getElementById('sel-anio-abono').value = yyyy;
-    if(document.getElementById('selector-mes-abono')) document.getElementById('selector-mes-abono').value = `${yyyy}-${mm}`;
-
-    await cargarDatosBase();
+    if (tieneAcceso) {
+        _ocultarModalPassInf();
+        cargarAppInformes();
+    } else {
+        _mostrarModalPassInf();
+    }
 });
-
 // 🔥 FUNCIÓN QUE CONECTA LOS NUEVOS BOTONES CON EL SISTEMA VIEJO 🔥
 function cambioMesPersonalizado() {
     let m = document.getElementById('sel-mes-abono').value;
@@ -600,7 +672,7 @@ function agregarItem(tipoBase = "", desc = "", cant = 1, precioForzado = null, m
     div.style.cssText = "background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; border-left: 4px solid #1a73e8; box-shadow: 0 1px 4px rgba(0,0,0,0.08);";
     div.id = `maq-${idUnico}`;
     
-    let gridColumnas = '1fr 1fr';
+    let gridColumnas = modoApp === 'presupuestos' ? '1fr 1fr 1fr 1.2fr' : '1fr 1fr';
 
     div.innerHTML = `
         <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
@@ -1069,16 +1141,6 @@ function renderizarTarjetas() {
             chipsHTML += `<button class="mes-chip ${filtroMesActual===m?'activo':''}" onclick="setFiltroMes('${m}')">${m}</button>`;
         });
         mesesScrollEl.innerHTML = chipsHTML;
-    }
-
-    // Mostrar/ocultar filtros de estado según el modo (Ofertas no tiene pagado/pendiente)
-    const divFiltrosEstado = document.getElementById('div-filtros-estado');
-    if (divFiltrosEstado) {
-        divFiltrosEstado.style.display = modoApp === 'ofertas' ? 'none' : 'flex';
-    }
-    // Si estamos en Ofertas, forzar filtro "Todos" para mostrar todos los docs
-    if (modoApp === 'ofertas') {
-        filtroPagoActual = 'Todos';
     }
 
     // Actualizar estilos de botones de estado
