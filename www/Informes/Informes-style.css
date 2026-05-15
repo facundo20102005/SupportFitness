@@ -1,0 +1,221 @@
+/* Importamos el CSS de la app principal para mantener tu diseño idéntico */
+@import url('../style.css');
+
+/* ⚡ FIX: Aniquilación de la línea blanca superior ⚡ */
+html, body {
+    margin: 0 !important;
+    padding: 0;
+    box-sizing: border-box;
+    background-color: #f0f2f5;
+}
+
+body { 
+    padding-top: 70px !important; 
+} 
+
+/* Forzamos la barra a pegarse al techo sin dejar margen */
+.top-nav {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    margin-top: 0 !important;
+}
+
+.btn-volver {
+    display: flex !important;
+    background: rgba(255,255,255,0.15);
+    color: white; border: 1px solid rgba(255,255,255,0.4);
+    padding: 8px 14px; border-radius: 20px; font-weight: 700; cursor: pointer; text-decoration: none;
+}
+.btn-volver:hover { background: rgba(255,255,255,0.3); }
+
+.select-moderno {
+    width: 100%; padding: 13px; margin-top: 6px; margin-bottom: 10px;
+    border: 1.5px solid var(--azul); border-radius: 8px; font-size: 15px; font-weight: 700;
+    color: var(--azul); background: #e8f0fe; cursor: pointer;
+}
+
+.item-box input[type="text"], .item-box input[type="number"] { 
+    margin-bottom: 0px; 
+    padding: 10px;
+}
+
+.botonera-presupuesto { 
+    display: flex; 
+    gap: 10px; 
+    margin-bottom: 25px; 
+}
+
+
+
+/* 2. Limpieza de tarjetas para que se peguen arriba */
+.card {
+    border-top: none !important; /* Elimina cualquier borde superior */
+    border-radius: 8px; /* Mantener esquinas redondeadas pero no arriba */
+}
+
+/* 3. Mejoras en la tabla de presupuesto (Web/PC) */
+.tabla-presupuesto {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.tabla-presupuesto th {
+    background-color: #f8f9fa;
+    color: #1a73e8;
+    text-align: left;
+    padding: 10px;
+    border-bottom: 2px solid #ddd;
+}
+
+.tabla-presupuesto td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.item-detalle-dinamico td {
+    padding-left: 20px; /* Sangría para el detalle del cable */
+    color: #5f6368;
+    font-style: italic;
+}
+
+.presup-disp {
+    width: 40px;
+    text-align: center;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+/* 4. Estilos para los encabezados de item */
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.item-header h4 { margin: 0; color: #1a73e8; }
+.btn-quitar { color: #d93025; cursor: pointer; font-weight: bold; }
+
+
+/* ============================================================
+   OPTIMIZACIÓN PARA CELULAR (Mobile First)
+   ============================================================ */
+@media (max-width: 768px) {
+    .layout-principal { padding: 10px; }
+    .card { padding: 15px; border-radius: 8px; border-top: none; }
+    
+    .botonera-presupuesto { flex-direction: column; }
+    .botonera-presupuesto button { width: 100%; margin-top: 5px !important; }
+
+
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+
+    /* Las tarjetas de item se expanden y apilan */
+    .item-presupuesto {
+        padding: 15px;
+        margin-bottom: 10px;
+    }
+
+    /* Forzamos que la tabla se apile verticalmente en celular */
+    .item-tabla-container {
+        display: block;
+        width: 100%;
+        overflow-x: auto; /* Permitir scroll horizontal si es muy ancha */
+    }
+
+    .tabla-presupuesto, 
+    .tabla-presupuesto thead, 
+    .tabla-presupuesto tbody, 
+    .tabla-presupuesto th, 
+    .tabla-presupuesto td, 
+    .tabla-presupuesto tr {
+        display: block;
+    }
+
+    /* Ocultamos los encabezados de tabla para apilar los datos */
+    .tabla-presupuesto thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .tabla-presupuesto tr {
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .tabla-presupuesto td {
+        border: none;
+        position: relative;
+        padding-left: 50%; /* Espacio para el label */
+        text-align: right;
+    }
+
+    /* Usamos :before para poner los labels en celular */
+    .tabla-presupuesto td:before {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: bold;
+        color: #1a73e8;
+    }
+
+    /* Labels específicos para celular (Modelo DETALLADO) */
+    .item-presupuesto.detallado td:nth-of-type(1):before { content: "Cantidad:"; }
+    .item-presupuesto.detallado td:nth-of-type(2):before { content: "Detalle:"; }
+    .item-presupuesto.detallado td:nth-of-type(3):before { content: "P.Unit:"; }
+    .item-presupuesto.detallado td:nth-of-type(4):before { content: "Total:"; }
+
+    /* Labels específicos para celular (Modelo FINAL) */
+    .item-presupuesto.final td:nth-of-type(1):before { content: "Unidad:"; }
+    .item-presupuesto.final td:nth-of-type(2):before { content: "Detalle:"; }
+    .item-presupuesto.final td:nth-of-type(3):before { content: "Disp.:"; }
+    .item-presupuesto.final td:nth-of-type(4):before { content: "Total:"; }
+}
+.ul-nav {
+    list-style: none;
+    display: flex;
+    width: 100%;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0;
+    margin: 0;
+    height: 100%;
+}
+.ul-nav li {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+.bottom-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border: none;
+    color: #5f6368;
+    font-weight: 700;
+    font-size: 11px;
+    padding: 5px 0;
+}
+.bottom-nav-btn .bnav-icon {
+    font-size: 20px;
+    margin-bottom: 3px;
+}

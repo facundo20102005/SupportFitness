@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1a73e8">
+    <title>Tapizados - Support Fitness</title>
+    <link rel="icon" href="../assets/logo.jpeg">
+    <link rel="stylesheet" href="../style.css">
+    <script src="../nav.js"></script>
+    <script src="tapizados.js" defer></script>
+</head>
+<body style="background-color: #f0f2f5; padding-top: 70px; padding-bottom: 80px;">
+
+    <div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+        <div class="card" style="text-align:left;">
+            <h2 style="color:#1a73e8; margin-top:0; margin-bottom:5px;">💺 Gestión de Tapizados</h2>
+            <p style="color:#5f6368; font-size:14px; margin-bottom:16px;">
+                Identificá las fotos del tapizado, asignale <b>Cantidad</b> y <b>Precio por unidad</b>.
+            </p>
+
+            <div id="status-tapizados" class="status mostrar cargando" style="margin-bottom:14px;">
+                Verificando acceso... 🔒
+            </div>
+
+            <select id="select-tapizados" class="select-moderno" style="display:none;" onchange="seleccionarTapizadoPendiente()">
+                <option value="">-- Elegir Gimnasio Pendiente --</option>
+            </select>
+
+            <div id="calc-tapizado" style="display:none; background:#f8f9fa; padding:20px; border-radius:10px; border:1px solid #eee; margin-top:14px;">
+                <div id="contenedor-fotos-precios"></div>
+                <div style="margin-top:18px; padding-top:14px; border-top:2px dashed #ccc;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="font-size:17px; font-weight:800;">Total Tapicero:</span>
+                        <span id="precio-tapicero-total" style="font-size:22px; font-weight:800; color:#1a73e8;">$0</span>
+                    </div>
+                    <div id="caja-precio-cliente" style="display:none; justify-content:space-between; align-items:center; padding:12px; background:#e6f4ea; border-radius:8px; border:1px solid #ceead6;">
+                        <span style="font-size:16px; font-weight:800; color:#188038;">PRESUPUESTO FINAL (+25%):</span>
+                        <span id="precio-cliente-total" style="font-size:24px; font-weight:800; color:#188038;">$0</span>
+                    </div>
+                </div>
+                <button id="btn-guardar-cotizacion" class="btn-submit"
+                        style="background:#0f9d58; box-shadow:0 4px 14px rgba(15,157,88,0.35);"
+                        onclick="guardarCotizacionDetalladaBD()">
+                    💾 Guardar Cotización Oficial
+                </button>
+                <div id="status-cotizacion" class="status" style="margin-top:14px;"></div>
+            </div>
+
+            <!-- Panel Jefe: Presupuestos armados (solo si tiene auth_jefatura) -->
+            <div id="panel-jefe-presupuestos" style="display:none; margin-top:30px; border-top:2px solid #eee; padding-top:20px;">
+                <h2 style="color:#188038; margin-top:0; margin-bottom:6px;">📄 Presupuestos Armados</h2>
+                <p style="color:#5f6368; font-size:13px; margin-bottom:14px;">
+                    Elegí un presupuesto para ver el detalle máquina por máquina.
+                </p>
+                <select id="select-presupuestos-jefe" class="select-moderno-verde" style="display:none;" onchange="seleccionarPresupuestoJefe()">
+                    <option value="">-- Elegir Gimnasio Presupuestado --</option>
+                </select>
+                <div id="detalle-presupuesto-jefe"
+                     style="display:none; background:#fff; border-left:5px solid #188038; border-radius:10px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.1); margin-top:14px;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Password -->
+    <div id="modalPassword" class="modal-overlay" style="display:flex;">
+        <div class="modal-content" style="max-width:350px; text-align:center; padding:30px 20px;">
+            <h2 style="color:#1a73e8; margin-top:0; font-size:22px;">🔒 Acceso Tapizados</h2>
+            <p style="color:#5f6368; font-size:14px; margin-bottom:20px;">Ingresá la clave para continuar.</p>
+            <input type="password" id="input-pass" placeholder="Contraseña..."
+                   style="width:100%; padding:12px; border:2px solid #dadce0; border-radius:8px;
+                          font-size:16px; margin-bottom:15px; text-align:center; outline:none;"
+                   onkeydown="if(event.key==='Enter') verificarAcceso()">
+            <button class="btn-submit" onclick="verificarAcceso()" style="width:100%; margin:0;">Ingresar</button>
+            <div id="pass-error"
+                 style="display:none; color:#d93025; background:#fce8e6; padding:10px;
+                        border-radius:6px; font-weight:bold; font-size:14px; margin-top:15px;">
+                ❌ Contraseña incorrecta.
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Lupa -->
+    <div id="modalLupa" class="modal-lupa">
+        <span class="lupa-close" onclick="document.getElementById('modalLupa').style.display='none'">&times;</span>
+        <img id="imgLupa" src="" alt="Vista ampliada">
+    </div>
+
+    <!-- Modales genéricos -->
+    <div id="modalConfirmacion" class="modal-sistema">
+        <div class="modal-sistema-box">
+            <div class="modal-sistema-titulo" style="color:#d93025;">⚠️ Confirmación</div>
+            <div class="modal-sistema-msg" id="msg-confirmacion"></div>
+            <div class="modal-sistema-btns">
+                <button onclick="cerrarConfirmacion(false)" class="btn-modal-secundario">Cancelar</button>
+                <button onclick="cerrarConfirmacion(true)" class="btn-modal-peligro">¡Sí, seguro!</button>
+            </div>
+        </div>
+    </div>
+    <div id="modalAlerta" class="modal-sistema">
+        <div class="modal-sistema-box">
+            <div class="modal-sistema-titulo" style="color:#1a73e8;">ℹ️ Aviso</div>
+            <div class="modal-sistema-msg" id="msg-alerta"></div>
+            <div class="modal-sistema-btns">
+                <button onclick="document.getElementById('modalAlerta').style.display='none'"
+                        class="btn-modal-primario">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()" title="Modo Oscuro">🌙</button>
+</body>
+</html>

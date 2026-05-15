@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a73e8">
+    <title>Informes - Support Fitness</title>
+    <link rel="icon" href="../assets/logo.jpeg">
+    <link rel="stylesheet" href="../style.css">
+    <script src="../nav.js"></script>
+    <script src="Informes-app.js" defer></script>
+    <style>
+        /* ── CRITICAL: forzar layout vertical en Informes ── */
+        .layout-principal {
+            display: block !important;
+        }
+        .layout-principal > div {
+            width: 100% !important;
+            min-width: unset !important;
+        }
+
+        /* ── Animaciones generales ── */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; max-height: 0; }
+            to   { opacity: 1; max-height: 800px; }
+        }
+        @keyframes pulse-green {
+            0%,100% { box-shadow: 0 0 0 0 rgba(15,157,88,0.4); }
+            50%      { box-shadow: 0 0 0 8px rgba(15,157,88,0); }
+        }
+
+        /* ── Tabs principales ── */
+        .inf-tabs {
+            display: flex;
+            background: var(--fondo-card, #fff);
+            border-radius: 14px;
+            padding: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            margin-bottom: 22px;
+            gap: 4px;
+        }
+        .inf-tab-btn {
+            flex: 1;
+            padding: 12px 8px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 800;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: transparent;
+            color: #5f6368;
+        }
+        .inf-tab-btn.activo {
+            background: #1a73e8;
+            color: white;
+            box-shadow: 0 4px 12px rgba(26,115,232,0.35);
+            transform: translateY(-1px);
+        }
+        .inf-tab-btn:hover:not(.activo) {
+            background: #f1f3f4;
+            color: #1a73e8;
+        }
+
+        /* ── Tabs secundarios (crear/guardados) ── */
+        .inf-subtabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .inf-subtab-btn {
+            flex: 1;
+            padding: 13px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 800;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #tab-crear    { background: #1a73e8; color: white; }
+        #tab-creados  { background: #5f6368; color: white; }
+        #tab-crear.activo   { background:#1a73e8; box-shadow:0 4px 14px rgba(26,115,232,0.4); }
+        #tab-creados.activo { background:#3c4043; box-shadow:0 4px 12px rgba(0,0,0,0.25); }
+
+        /* ── Card de creación ── */
+        .inf-crear-card {
+            background: var(--fondo-card, #fff);
+            border-radius: 14px;
+            padding: 22px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+            animation: fadeInUp 0.3s ease;
+        }
+
+        /* ── Previsualización de imágenes al cargar ── */
+        #previsualizacion-fotos {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .foto-preview-thumb {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #1a73e8;
+            cursor: pointer;
+            transition: transform 0.2s;
+            animation: fadeInUp 0.3s ease;
+        }
+        .foto-preview-thumb:hover { transform: scale(1.08); }
+        .foto-preview-thumb img {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+        .foto-preview-thumb .foto-remove {
+            position: absolute; top: 2px; right: 2px;
+            background: rgba(217,48,37,0.85);
+            color: white; border: none; border-radius: 50%;
+            width: 20px; height: 20px; font-size: 11px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; line-height: 1;
+        }
+        .foto-pdf-thumb {
+            width: 80px; height: 80px;
+            background: #e8f0fe;
+            border-radius: 8px;
+            border: 2px solid #1a73e8;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            font-size: 28px; color: #1a73e8;
+            font-weight: bold; font-size: 11px;
+            gap: 4px; padding: 4px;
+            text-align: center; word-break: break-all;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        /* ── Documentos guardados mejorados ── */
+        .doc-card-v2 {
+            background: var(--fondo-card, #fff);
+            border-radius: 14px;
+            border: 1px solid #e8eaed;
+            margin-bottom: 12px;
+            overflow: hidden;
+            transition: all 0.25s;
+            animation: fadeInUp 0.3s ease both;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .doc-card-v2:hover {
+            box-shadow: 0 6px 20px rgba(0,0,0,0.10);
+            transform: translateY(-2px);
+            border-color: #1a73e8;
+        }
+        .doc-card-v2.pendiente { border-left: 4px solid #d93025; }
+        .doc-card-v2.pagado   { border-left: 4px solid #0f9d58; }
+
+        .doc-header-v2 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            cursor: pointer;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .doc-gym-v2 {
+            font-weight: 900;
+            font-size: 14px;
+            color: #1a1a1a;
+            letter-spacing: -0.2px;
+        }
+        .doc-meta-v2 {
+            font-size: 12px;
+            color: #5f6368;
+            margin-top: 3px;
+        }
+        .doc-badge-factura {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: #e8f0fe; color: #1a73e8;
+            padding: 4px 10px; border-radius: 20px;
+            font-size: 12px; font-weight: 800;
+            border: 1px solid #aecbfa;
+            white-space: nowrap;
+        }
+        .doc-badge-estado {
+            padding: 5px 12px; border-radius: 20px;
+            font-size: 11px; font-weight: 900;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .doc-badge-estado.pendiente { background: #fce8e6; color: #d93025; }
+        .doc-badge-estado.pagado    { background: #e6f4ea; color: #0f9d58; animation: pulse-green 2s infinite; }
+
+        .doc-expand-v2 {
+            background: #f8f9fa;
+            border-top: 1px solid #f1f3f4;
+            padding: 16px;
+            animation: slideDown 0.3s ease;
+            display: none;
+        }
+        .doc-expand-v2.abierto { display: block; }
+
+        /* ── Filtros de mes scrollable ── */
+        .meses-scroll {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .mes-chip {
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1.5px solid #dadce0;
+            background: white;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            color: #5f6368;
+        }
+        .mes-chip.activo { background: #1a73e8; color: white; border-color: #1a73e8; }
+        .mes-chip:hover:not(.activo) { border-color: #1a73e8; color: #1a73e8; }
+
+        /* ── Buscador mejorado ── */
+        .inf-buscador {
+            width: 100%;
+            padding: 12px 16px 12px 42px;
+            border: 1.5px solid #dadce0;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 16px;
+            background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235f6368' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 14px center;
+            transition: border-color 0.2s;
+        }
+        .inf-buscador:focus { border-color: #1a73e8; outline: none; }
+
+        /* ── Modal imagen ampliada ── */
+        #modal-img-preview {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            cursor: zoom-out;
+        }
+        #modal-img-preview.open { display: flex; }
+        #modal-img-preview img {
+            max-width: 95vw; max-height: 90vh;
+            border-radius: 8px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+        }
+        #modal-img-preview-close {
+            position: fixed; top: 16px; right: 20px;
+            font-size: 36px; color: white; cursor: pointer;
+            background: none; border: none; font-weight: bold;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* ── Dark mode fixes ── */
+        body.dark-mode .inf-tabs,
+        body.dark-mode .inf-crear-card { background: #1e2435; }
+        body.dark-mode .inf-tab-btn { color: #94a3b8; }
+        body.dark-mode .inf-tab-btn:hover:not(.activo) { background: #253450; }
+        body.dark-mode .doc-card-v2 { background: #1e2435; border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .doc-gym-v2  { color: #e2e8f0; }
+        body.dark-mode .doc-expand-v2 { background: #172032; border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .doc-badge-factura { background: #152354; color: #60a5fa; border-color: #1e3a8a; }
+        body.dark-mode .mes-chip { background: #1e2435; border-color: rgba(255,255,255,0.1); color: #94a3b8; }
+        body.dark-mode .inf-buscador { background: #1e2435; border-color: rgba(255,255,255,0.12); color: #e2e8f0; }
+    </style>
+</head>
+<body style="background-color:#f0f2f5;">
+
+    <!-- ── TABS PRINCIPALES ── -->
+    <div class="layout-principal" style="max-width:900px; margin:0 auto; padding:76px 16px 100px; display:block !important; flex-direction:unset !important;">
+
+        <div class="inf-tabs">
+            <button class="inf-tab-btn" id="btn-modo-ofertas"      onclick="setModoApp('ofertas')">🛠️ Ofertas</button>
+            <button class="inf-tab-btn" id="btn-modo-presupuestos"  onclick="setModoApp('presupuestos')">💰 Presupuestos</button>
+            <button class="inf-tab-btn" id="btn-modo-abonos"        onclick="setModoApp('abonos')">📋 Abonos Mensuales</button>
+        </div>
+
+        <!-- ── ABONOS ── -->
+        <div id="seccion-abonos" style="display:none; width:100%;">
+            <div class="inf-crear-card" style="margin-bottom:15px;">
+                <h3 style="margin:0 0 10px; color:#1a73e8; font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:0.5px;">📅 Seleccionar Mes de Facturación</h3>
+                <input type="month" id="selector-mes-abono" onchange="renderizarAbonos()"
+                    style="width:100%; padding:13px; border-radius:10px; border:2px solid #1a73e8;
+                           font-weight:800; font-size:15px; color:#1a73e8; background:#e8f0fe; cursor:pointer; outline:none;">
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:15px;">
+                <button onclick="setSectorAbono('facturar')"  id="tab-sec-facturar"  style="flex:1; padding:11px; border-radius:10px; border:none; font-weight:800; cursor:pointer; transition:all 0.2s;">🔴 Por Facturar</button>
+                <button onclick="setSectorAbono('enviar')"    id="tab-sec-enviar"    style="flex:1; padding:11px; border-radius:10px; border:none; font-weight:800; cursor:pointer; transition:all 0.2s;">🔵 Por Enviar</button>
+                <button onclick="setSectorAbono('completado')" id="tab-sec-completado" style="flex:1; padding:11px; border-radius:10px; border:none; font-weight:800; cursor:pointer; transition:all 0.2s;">🟢 Completados</button>
+            </div>
+            <div id="contenedor-abonos-lista"></div>
+        </div>
+
+        <!-- ── MENSAJE INICIAL ── -->
+        <div id="mensaje-inicial" style="width:100%; text-align:center; padding:50px 20px; background:white; border-radius:16px; box-shadow:0 2px 12px rgba(0,0,0,0.07); animation:fadeInUp 0.4s ease;">
+            <div style="font-size:52px; margin-bottom:12px;">👆</div>
+            <h2 style="color:#1a73e8; margin:0; font-size:22px;">Seleccioná una opción</h2>
+            <p style="color:#5f6368; margin-top:8px; font-size:14px;">Elegí arriba para gestionar Ofertas, Presupuestos o Abonos.</p>
+        </div>
+
+        <!-- ── ÁREA DE TRABAJO ── -->
+        <div id="area-trabajo" style="display:none; width:100%;">
+
+            <!-- Sub-tabs crear/guardados -->
+            <div class="inf-subtabs">
+                <button id="tab-crear"   class="inf-subtab-btn" onclick="switchTab('crear')">  ✏️ Crear Nuevo</button>
+                <button id="tab-creados" class="inf-subtab-btn" onclick="switchTab('creados')">📁 Ver Guardados</button>
+            </div>
+
+            <!-- ── CREAR ── -->
+            <div id="seccion-crear">
+                <div class="inf-crear-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
+                        <h2 style="color:#1a73e8; margin:0;" id="titulo-form">📄 Nuevo Documento</h2>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <span id="valor-dolar"
+                                  style="display:none; font-size:13px; font-weight:800; color:#0f9d58;
+                                         background:#e6f4ea; padding:6px 12px; border-radius:20px;
+                                         cursor:pointer; border:1px solid #ceead6; transition:0.2s;"
+                                  title="Cotización en tiempo real. Tocá para refrescar.">
+                                Cotizando USD... ⏳
+                            </span>
+                            <button id="btn-ver-precios" onclick="toggleBurbujaPrecios()"
+                                    style="display:none; font-size:12px; font-weight:800; padding:6px 14px;
+                                           border-radius:20px; border:none; background:#e8f0fe; color:#1a73e8;
+                                           cursor:pointer; transition:all 0.2s;">
+                                📋 Lista de Precios
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Burbuja precios -->
+                    <div id="burbuja-precios" style="display:none; margin-bottom:16px; border-radius:12px; border:1.5px solid #dadce0; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.10);">
+                        <div style="background:#1a73e8; color:white; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:900; font-size:14px;">📋 Lista de Precios</span>
+                            <span style="font-size:12px; opacity:0.85;" id="burbuja-dolar-label">💱 USD: $...</span>
+                        </div>
+                        <div id="burbuja-precios-contenido" style="max-height:340px; overflow-y:auto;"></div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:15px;">
+                            <div id="container-gym" style="position:relative;">
+                                <label style="font-size:12px; color:#5f6368; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;" id="label-gym">Gimnasio *</label>
+                                <input type="text" id="input-gym" autocomplete="off" placeholder="Buscá o escribí nuevo..."
+                                       style="width:100%; padding:11px; border:1.5px solid #dadce0; border-radius:10px; margin-top:5px; font-size:14px;"
+                                       oninput="filtrarGimnasiosPersonalizado()">
+                                <div id="sugerencias-gym" style="display:none; position:absolute; top:72px; left:0; right:0; background:white; border:1px solid #ccc; border-radius:10px; max-height:200px; overflow-y:auto; z-index:1000; box-shadow:0 6px 20px rgba(0,0,0,0.12);"></div>
+                                <div id="contenedor-burbujas-fecha" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
+                                <div id="detalle-motivo-burbuja" style="margin-top:10px; font-size:13px; color:#333; background:#f8f9fa; padding:10px; border-radius:8px; border-left:3px solid #1a73e8; display:none;"></div>
+                            </div>
+                            <div id="container-cuit">
+                                <label style="font-size:12px; color:#5f6368; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">CUIT / CUIL (Opcional)</label>
+                                <input type="text" id="input-cuit" placeholder="XX-XXXXXXXX-X"
+                                       style="width:100%; padding:11px; border:1.5px solid #dadce0; border-radius:10px; margin-top:5px; font-size:14px;">
+                            </div>
+                            <div id="container-frecuencia">
+                                <label style="font-size:12px; color:#5f6368; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Frecuencia *</label>
+                                <select id="informe-frecuencia"
+                                        style="width:100%; padding:11px; border:1.5px solid #1a73e8; border-radius:10px; color:#1a73e8; background:#e8f0fe; font-weight:800; margin-top:5px;">
+                                    <option value="Mensual">Mensual</option>
+                                    <option value="Bimestral">Bimestral</option>
+                                    <option value="Trimestral">Trimestral</option>
+                                </select>
+                            </div>
+                            <div id="container-fecha" style="display:none;">
+                                <label style="font-size:12px; color:#5f6368; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Fecha del Presupuesto *</label>
+                                <input type="text" id="input-fecha-presup" oninput="formatearFechaManual(event)"
+                                       placeholder="DD/MM/AAAA" maxlength="10"
+                                       style="width:100%; padding:11px; border:1.5px solid #dadce0; border-radius:10px; margin-top:5px; font-size:14px; font-weight:700;">
+                            </div>
+                    </div>
+                </div>
+
+                <div id="lista-maquinas-dom" style="margin-top:16px;"></div>
+
+                <button type="button" onclick="agregarItem()"
+                        style="background:#34a853; color:white; width:100%; padding:15px; border:none;
+                               border-radius:12px; font-weight:900; font-size:15px; margin-top:12px;
+                               cursor:pointer; transition:all 0.2s; box-shadow:0 4px 12px rgba(52,168,83,0.3);">
+                    ➕ Agregar Ítem
+                </button>
+
+                <div class="inf-crear-card" style="margin-top:16px; background:#e8f0fe; border:2px dashed #1a73e8; text-align:right;">
+                    <div id="container-iva" style="display:none;">
+                        <p style="margin:0; color:#5f6368; font-size:14px;">Subtotal: <span id="subtotal-precio">$0</span></p>
+                        <p style="margin:5px 0; color:#d93025; font-size:14px;">IVA (21%): <span id="iva-precio">$0</span></p>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                        <h3 style="margin:0; color:#1a73e8; font-size:18px; font-weight:900;">Total: $</h3>
+                        <input type="number" id="input-total-manual" value="0"
+                               style="font-size:20px; color:#1a73e8; font-weight:900; width:55%; max-width:150px;
+                                      text-align:right; border:2px solid #1a73e8; border-radius:10px;
+                                      background:white; padding:6px; outline:none;">
+                    </div>
+                </div>
+
+                <button type="button" id="btn-guardar" onclick="guardarDocumento()"
+                        style="background:#1a73e8; color:white; width:100%; padding:17px; border:none;
+                               border-radius:14px; font-size:17px; font-weight:900; margin-top:16px;
+                               cursor:pointer; transition:all 0.2s; box-shadow:0 6px 18px rgba(26,115,232,0.35);">
+                    💾 Guardar Documento
+                </button>
+            </div>
+
+            <!-- ── DOCUMENTOS GUARDADOS ── -->
+            <div id="seccion-creados" style="display:none;">
+                <div id="arca-container" style="display:none; margin-bottom:14px;">
+                    <button class="btn-submit" onclick="ejecutarSincronizacionARCA()"
+                            style="background:#673ab7; margin-top:0; width:100%; display:flex; align-items:center; justify-content:center; gap:10px; border-radius:12px; box-shadow:0 4px 14px rgba(103,58,183,0.35);">
+                        🔄 Sincronizar con Base ARCA
+                    </button>
+                </div>
+
+                <div class="inf-crear-card">
+                    <h2 style="color:#1a73e8; margin:0 0 4px;" id="titulo-guardados">📁 Documentos Guardados</h2>
+                    <p style="color:#5f6368; font-size:13px; margin:0 0 14px;" id="desc-guardados">Lista de los documentos creados en la nube.</p>
+
+                    <!-- Buscador -->
+                    <input type="text" id="buscador-global" class="inf-buscador"
+                           placeholder="Buscar por gimnasio..."
+                           oninput="renderizarTarjetas()">
+
+                    <!-- Filtros estado -->
+                    <div id="div-filtros-estado" style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
+                        <button id="filtro-pendiente" onclick="setFiltroPago('pendiente')"
+                                style="flex:1; min-width:90px; padding:9px; border-radius:10px; border:none; font-weight:800; cursor:pointer; transition:all 0.2s;">
+                            🔴 Pendientes
+                        </button>
+                        <button id="filtro-pagado" onclick="setFiltroPago('pagado')"
+                                style="flex:1; min-width:90px; padding:9px; border-radius:10px; border:none; font-weight:800; cursor:pointer; transition:all 0.2s;">
+                            🟢 Pagados
+                        </button>
+                        <button id="filtro-todos" onclick="setFiltroPago('todos')"
+                                style="flex:1; min-width:90px; padding:9px; border-radius:10px; border:none; font-weight:800; cursor:pointer; transition:all 0.2s;">
+                            🌐 Todos
+                        </button>
+                    </div>
+
+                    <!-- Filtros de mes -->
+                    <div class="meses-scroll" id="meses-scroll"></div>
+
+                    <!-- Lista de documentos -->
+                    <div id="contenedor-informes-creados" style="margin-top:4px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="status-informe" style="text-align:center; margin-top:14px; font-weight:700; padding:12px; border-radius:10px; display:none;"></div>
+    </div>
+
+    <!-- ── MODALES ── -->
+    <div id="modalConfirmacion" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:340px; text-align:center; padding:30px 20px;">
+            <div style="font-size:48px; margin-bottom:14px;">⚠️</div>
+            <h2 style="color:#d93025; margin:0 0 10px; font-size:20px;">¿Borrar documento?</h2>
+            <p style="color:#5f6368; font-size:14px; margin-bottom:24px; line-height:1.5;">Esta acción eliminará el registro permanentemente y no se puede deshacer.</p>
+            <div style="display:flex; gap:10px;">
+                <button onclick="cerrarModalConfirmacion()" style="flex:1; padding:12px; border:1.5px solid #dadce0; border-radius:10px; background:white; color:#3c4043; font-weight:700; cursor:pointer;">Cancelar</button>
+                <button id="btn-confirmar-borrado" style="flex:1; padding:12px; border:none; border-radius:10px; background:#d93025; color:white; font-weight:700; cursor:pointer;">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalFactura" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:340px; text-align:center; padding:28px 20px;">
+            <div style="font-size:38px; margin-bottom:10px;">📄</div>
+            <h2 style="color:#1a73e8; margin:0 0 8px; font-size:19px;">Número de Factura</h2>
+            <p style="color:#5f6368; font-size:13px; margin-bottom:18px;">Ingresá el número para marcar como aprobado.</p>
+            <div style="display:flex; gap:10px; margin-bottom:18px;">
+                <select id="tipo-modal-factura" style="flex:1; padding:12px; border:2px solid #dadce0; border-radius:10px; font-size:15px; font-weight:700; background:white; color:#1a73e8; outline:none;">
+                    <option value="A">Factura A</option>
+                    <option value="B" selected>Factura B</option>
+                </select>
+                <input type="text" id="input-modal-factura" placeholder="1234" style="flex:1; padding:12px; border:2px solid #dadce0; border-radius:10px; font-size:16px; text-align:center; font-weight:700; outline:none;">
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button onclick="cerrarModalFactura()" style="flex:1; padding:12px; border:1.5px solid #dadce0; border-radius:10px; background:white; color:#3c4043; font-weight:700; cursor:pointer;">Cancelar</button>
+                <button onclick="confirmarModalFactura()" style="flex:1; padding:12px; border:none; border-radius:10px; background:#1a73e8; color:white; font-weight:700; cursor:pointer;">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalArca" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:340px; text-align:center; padding:28px 20px;">
+            <div style="font-size:48px; margin-bottom:14px;">🔄</div>
+            <h2 style="color:#673ab7; margin:0 0 10px; font-size:20px;">Sincronizar con ARCA</h2>
+            <p style="color:#5f6368; font-size:14px; margin-bottom:24px; line-height:1.5;">Esto cruzará CUITs y Montos con la pestaña <b>'Base ARCA'</b>. ¿Continuás?</p>
+            <div style="display:flex; gap:10px;">
+                <button onclick="cerrarModalArca()" style="flex:1; padding:12px; border:1.5px solid #dadce0; border-radius:10px; background:white; color:#3c4043; font-weight:700; cursor:pointer;">Cancelar</button>
+                <button onclick="confirmarSincronizacionARCA()" style="flex:1; padding:12px; border:none; border-radius:10px; background:#673ab7; color:white; font-weight:700; cursor:pointer;">Sincronizar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MODAL IMAGEN AMPLIADA ── -->
+    <div id="modal-img-preview" onclick="this.classList.remove('open')">
+        <button id="modal-img-preview-close" onclick="document.getElementById('modal-img-preview').classList.remove('open')">&times;</button>
+        <img id="modal-img-preview-src" src="" alt="Vista ampliada" onclick="event.stopPropagation()">
+    </div>
+
+    <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()" title="Modo Oscuro">🌙</button>
+
+    <script>
+        NavBar.init({ paginaActual: 'informes', mostrarBottomNav: false });
+
+        // ── Previsualización de imágenes al cargar items ──────────────────
+        // Esta función se llama desde Informes-app.js al seleccionar archivos en un ítem
+        window.mostrarPreviaImagen = function(url) {
+            const modal = document.getElementById('modal-img-preview');
+            document.getElementById('modal-img-preview-src').src = url;
+            modal.classList.add('open');
+        };
+    </script>
+</body>
+</html>
