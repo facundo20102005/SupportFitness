@@ -272,7 +272,7 @@ async function verificarAccesoInformes() {
                 _ocultarModalPassInf();
                 cargarAppInformes();
             }, 900);
-    } else {
+        } else {
             // ❌ Incorrecto
             loadingEl.style.display = 'none';
             errorEl.style.display   = 'block';
@@ -290,7 +290,7 @@ async function verificarAccesoInformes() {
         errorEl.style.display    = 'block';
         if (btnIng) { btnIng.disabled = false; btnIng.style.opacity = '1'; }
     }
-    }
+}
 
 // ── Carga principal de la app (solo se ejecuta post-auth) ──
 async function cargarAppInformes() {
@@ -300,8 +300,8 @@ async function cargarAppInformes() {
         listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
         let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
         listaAbonosBase.forEach(abono => {
-            let cuitLimpio = String(abono.cuit).replace(/\D/g, ""); 
-            if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym; 
+            let cuitLimpio = String(abono.cuit).replace(/\D/g, "");
+            if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym;
             if (!globalGymsOfertas.includes(abono.gym)) globalGymsOfertas.push(abono.gym);
             if (!globalGymsPresupuestos.includes(abono.gym)) globalGymsPresupuestos.push(abono.gym);
         });
