@@ -994,9 +994,23 @@ async function guardarDocumento() {
         
         agregarItem();
         mostrarMensaje('✅ Guardado exitosamente.', 'exito');
+
+        // Mostrar acceso rápido PDF/Mail con el ID del documento guardado
+        const nuevoId = respuesta?.id || payload.datos.id;
+        const accesoPDF = document.getElementById('acceso-rapido-pdf');
+        const btnPDF    = document.getElementById('btn-rapido-pdf');
+        const btnMail   = document.getElementById('btn-rapido-mail');
+        if (accesoPDF && nuevoId) {
+            accesoPDF.style.display = 'block';
+            if (btnPDF)  btnPDF.onclick  = () => abrirVistaPresupuesto(nuevoId);
+            if (btnMail) btnMail.onclick = () => prepararMail(nuevoId);
+        }
         setTimeout(() => switchTab('creados'), 1500);
-    } catch (e) { mostrarMensaje('❌ Error de red.', 'error'); } 
-    finally { btn.disabled = false; }
+    } catch (e) {
+        const msg = e?.message || String(e) || 'Error desconocido';
+        console.error('guardarDocumento error:', e);
+        mostrarMensaje('❌ Error de conexión: ' + msg + '\n(Verificá tu internet y que el script de Google esté activo)', 'error');
+    } finally { btn.disabled = false; }
 }
 // Para que la lista se cierre si tocas en cualquier otra parte de la pantalla
 document.addEventListener('click', (e) => {
@@ -1236,12 +1250,484 @@ function renderizarTarjetas() {
                     <button class="btn-doc-edit" onclick="editarDocumento(${doc.id})">✏️ Editar</button>
                     <button class="btn-doc-del"  onclick="eliminarDocumento(${doc.id})">🗑️ Eliminar</button>
                 </div>
+                <!-- Acciones rápidas: PDF y Mail -->
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button onclick="abrirVistaPresupuesto(${doc.id})"
+                            style="flex:1; padding:11px; background:linear-gradient(135deg,#1a73e8,#1155cc);
+                                   color:white; border:none; border-radius:10px; font-weight:900;
+                                   font-size:13px; cursor:pointer; box-shadow:0 3px 10px rgba(26,115,232,0.35);
+                                   display:flex; align-items:center; justify-content:center; gap:6px;">
+                        📄 Ver y Exportar PDF
+                    </button>
+                    <button onclick="prepararMail(${doc.id})"
+                            style="flex:1; padding:11px; background:linear-gradient(135deg,#0f9d58,#0b7a42);
+                                   color:white; border:none; border-radius:10px; font-weight:900;
+                                   font-size:13px; cursor:pointer; box-shadow:0 3px 10px rgba(15,157,88,0.35);
+                                   display:flex; align-items:center; justify-content:center; gap:6px;">
+                        📧 Preparar Mail
+                    </button>
+                </div>
             </div>
         `;
         contenedor.appendChild(div);
     });
 }
 
+// ════════════════════════════════════════════════════════════════
+//  📄 GENERADOR DE PRESUPUESTO PDF + 📧 MAIL AUTOMÁTICO
+// ════════════════════════════════════════════════════════════════
+
+function abrirVistaPresupuesto(id) {
+    const doc = documentosGuardados.find(d => d.id === id);
+    if (!doc) return;
+
+    // ── Base URL para los assets ─────────────────────────────────
+    const href = window.location.href;
+    const raiz = href.includes('/Informes/')
+        ? href.substring(0, href.indexOf('/Informes/')) + '/'
+        : href.substring(0, href.lastIndexOf('/') + 1);
+    const A = (f) => raiz + 'assets/' + f;
+
+    // ── Fecha limpia (usa fechaLimpia que ya parsea ISO) ─────────
+    const fechaLimpia = doc.fechaLimpia && doc.fechaLimpia !== 'Sin Fecha'
+        ? doc.fechaLimpia
+        : (() => {
+            const f = String(doc.fecha || '');
+            if (f.includes('T')) {
+                const d = new Date(f);
+                return String(d.getUTCDate()).padStart(2,'0') + '/' +
+                       String(d.getUTCMonth()+1).padStart(2,'0') + '/' +
+                       d.getUTCFullYear();
+            }
+            return f || '—';
+        })();
+    const fechaFormateada = fechaLimpia.replace(/\//g, ' / ');
+
+    // ── Montos ───────────────────────────────────────────────────
+    const total  = Number(doc.total) || 0;
+    const sinIVA = total > 0 ? Math.round(total / 1.21) : 0;
+    const ivaVal = total > 0 ? Math.round(total - sinIVA) : 0;
+    // Mostrar totales solo si el doc tiene precio real en el total
+    const mostrarTotales = total > 0;
+    const fmtARS = n => '$' + Math.round(n).toLocaleString('es-AR');
+    const DASH = '————————';
+
+    // ── Filas de ítems ───────────────────────────────────────────
+    let filasHTML = '';
+    (doc.items || []).forEach(m => {
+        const precioUnit = Number(m.precio) || 0;
+        const cant       = Number(m.cant) || 1;
+        const subtotal   = precioUnit * cant;
+        const extra      = (m.metros && m.terminales)
+            ? ` (${m.metros}m / ${m.terminales} term.)` : '';
+
+        if (m.desc && m.desc.trim()) {
+            filasHTML += `
+            <tr style="background:#eaf0fb;">
+                <td style="padding:5px 8px; border:1px solid #c8d3ec;"></td>
+                <td colspan="4" style="padding:7px 12px; font-weight:900; font-size:14px;
+                    border:1px solid #c8d3ec; color:#1a1a1a;">${m.desc}:</td>
+            </tr>`;
+        }
+        filasHTML += `
+        <tr>
+            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:center;
+                font-weight:900; font-size:14px; width:90px;">
+                ${cant > 1 ? '* ' + cant : ''}</td>
+            <td style="padding:7px 12px; border:1px solid #c8d3ec; font-size:13px;">
+                ${m.tipo}${extra}</td>
+            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:center;
+                font-size:13px; width:60px; font-weight:700;">SI</td>
+            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:right;
+                font-size:13px; font-weight:700; width:130px;">
+                ${cant > 1 && precioUnit > 0 ? fmtARS(precioUnit) : ''}</td>
+            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:right;
+                font-weight:900; font-size:14px; width:155px;">
+                ${subtotal > 0 ? fmtARS(subtotal) + '+IVA' : ''}</td>
+        </tr>`;
+    });
+
+    // Filas de relleno
+    const nItems = (doc.items || []).length;
+    for (let i = 0; i < Math.max(0, 5 - nItems * 2); i++) {
+        filasHTML += `<tr>
+            <td style="height:28px; border:1px solid #c8d3ec;"></td>
+            <td style="border:1px solid #c8d3ec;"></td>
+            <td style="border:1px solid #c8d3ec;"></td>
+            <td style="border:1px solid #c8d3ec;"></td>
+            <td style="border:1px solid #c8d3ec;"></td>
+        </tr>`;
+    }
+
+    // Fila observación + totales
+    filasHTML += `
+    <tr>
+        <td rowspan="3" style="border:1px solid #c8d3ec;"></td>
+        <td rowspan="3" style="padding:8px 12px; border:1px solid #c8d3ec;
+            font-size:12px; vertical-align:top; font-weight:700; color:#555;">Observación:</td>
+        <td rowspan="3" style="border:1px solid #c8d3ec;"></td>
+        <td style="padding:7px 10px; border:1px solid #c8d3ec; font-weight:800;
+            background:#eaf0fb; font-size:12px; text-align:right; color:#1a3a8f;">SUBTOTAL</td>
+        <td style="padding:7px 10px; border:1px solid #c8d3ec; text-align:right;
+            font-size:12px; font-weight:700; color:#555; font-family:monospace;">
+            ${mostrarTotales ? fmtARS(sinIVA) : DASH}</td>
+    </tr>
+    <tr>
+        <td style="padding:7px 10px; border:1px solid #c8d3ec; font-weight:800;
+            background:#eaf0fb; font-size:12px; text-align:right; color:#1a3a8f;">IVA 21 %</td>
+        <td style="padding:7px 10px; border:1px solid #c8d3ec; text-align:right;
+            font-size:12px; font-weight:700; color:#555; font-family:monospace;">
+            ${mostrarTotales ? fmtARS(ivaVal) : DASH}</td>
+    </tr>
+    <tr>
+        <td style="padding:7px 10px; border:1px solid #c8d3ec; font-weight:900;
+            background:#1a3a8f; color:white; font-size:13px; text-align:right;">TOTAL</td>
+        <td style="padding:7px 10px; border:1px solid #c8d3ec; text-align:right;
+            font-weight:900; font-size:13px; background:#1a3a8f; color:white; font-family:monospace;">
+            ${mostrarTotales ? fmtARS(total) : DASH}</td>
+    </tr>`;
+
+    // ── Registrar en historial local ─────────────────────────────
+    registrarPDFGenerado(doc);
+
+    const clienteUpper = (doc.cliente || '').toUpperCase();
+    const cuitStr      = doc.cuit ? '  ·  CUIT: ' + doc.cuit : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Presupuesto — ${doc.cliente}</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    background: #dde3ec;
+    padding: 20px 16px 90px;
+    color: #111;
+}
+.hoja {
+    background: white;
+    max-width: 860px;
+    margin: 0 auto;
+    border: 1px solid #aab;
+    box-shadow: 0 4px 28px rgba(0,0,0,0.18);
+}
+.hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px 10px 12px;
+    border-bottom: 3px solid #1a3a8f;
+    gap: 10px;
+}
+.hdr-logo img { height: 76px; display: block; object-fit: contain; }
+.hdr-marcas {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.hdr-marcas img {
+    height: 40px;
+    object-fit: contain;
+    max-width: 130px;
+}
+.band {
+    background: #f4f7fb;
+    border-bottom: 1px solid #c8d3ec;
+    padding: 6px 14px;
+}
+.pres-title {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #1a3a8f;
+    margin-bottom: 5px;
+}
+.band-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 3px;
+    flex-wrap: wrap;
+}
+.band-empresa { font-size: 12px; font-weight: 700; color: #111; }
+.band-cliente { font-size: 13px; font-weight: 900; color: #1a3a8f; }
+.band-sub { font-size: 11px; color: #444; font-style: italic; }
+.band-fecha { font-size: 12px; font-weight: 900; color: #111; }
+.tabla-wrap { padding: 10px 14px 0; }
+table.items { width:100%; border-collapse:collapse; }
+table.items thead th {
+    background: #1a3a8f;
+    color: white;
+    padding: 8px 10px;
+    font-size: 12px;
+    border: 1px solid #112d78;
+    font-weight: 800;
+}
+table.items thead th:nth-child(1) { width:90px; text-align:center; }
+table.items thead th:nth-child(3) { width:60px; text-align:center; }
+table.items thead th:nth-child(4) { width:130px; text-align:right; }
+table.items thead th:nth-child(5) { width:155px; text-align:right; }
+.obs-bloque { padding: 8px 14px 14px; }
+#obs-area {
+    width: 100%;
+    min-height: 68px;
+    font-size: 12px;
+    font-family: Arial, sans-serif;
+    font-weight: 700;
+    color: #c0392b;
+    border: 1px dashed #ddd;
+    border-radius: 3px;
+    padding: 6px 8px;
+    resize: vertical;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    background: transparent;
+}
+.toolbar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(255,255,255,0.96);
+    border-top: 2px solid #dde3f0;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 20px;
+    z-index: 100;
+    flex-wrap: wrap;
+    backdrop-filter: blur(6px);
+}
+.btn {
+    padding: 11px 22px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 900;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.btn:active { transform: scale(0.97); }
+.btn-pdf  { background:linear-gradient(135deg,#1a3a8f,#1155cc); color:white; box-shadow:0 4px 14px rgba(26,58,143,0.45); }
+.btn-mail { background:linear-gradient(135deg,#0f9d58,#0b7a42); color:white; box-shadow:0 4px 14px rgba(15,157,88,0.4); }
+.btn-close{ background:#f1f3f5; color:#3c4043; border:1.5px solid #ddd; }
+@media print {
+    body { background:white !important; padding:0 !important; }
+    .hoja { box-shadow:none !important; border:none !important; max-width:100% !important; }
+    .toolbar { display:none !important; }
+    #obs-area { border:none !important; }
+    table.items thead th,
+    tr td[style*="background:#1a3a8f"],
+    tr td[style*="background:#eaf0fb"] {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+</style>
+</head>
+<body>
+<div class="hoja">
+
+    <!-- HEADER -->
+    <div class="hdr">
+        <div class="hdr-logo">
+            <img src="${A('Logoparapdf.jpeg')}" alt="Support Fitness"
+                 onerror="this.src='${A('Logoparapdf.png')}'"
+                 onerror="this.src='${A('logo2.jpeg')}'">
+        </div>
+        <div class="hdr-marcas">
+            <img src="${A('StarTrac.png')}"  alt="Star Trac"
+                 onerror="this.outerHTML='<b style=&quot;color:#003087;font-size:11px;font-style:italic;&quot;>⊙ STAR TRAC·</b>'">
+            <img src="${A('Spinning.png')}"  alt="Spinning"
+                 onerror="this.outerHTML='<b style=&quot;color:#e31837;font-size:11px;&quot;>⊗ SPINNING.</b>'">
+            <img src="${A('Octane.png')}"    alt="Octane"
+                 onerror="this.outerHTML='<b style=&quot;color:#ff6600;font-size:11px;&quot;>Octane</b>'">
+            <img src="${A('Paramount.png')}" alt="Paramount"
+                 onerror="this.outerHTML='<b style=&quot;color:#111;font-size:11px;&quot;>/PARAMOUNT.</b>'">
+        </div>
+    </div>
+
+    <!-- INFO BANDA -->
+    <div class="band">
+        <div class="pres-title">P R E S U P U E S T O</div>
+        <div class="band-row">
+            <span class="band-empresa">SUPPORT FITNESS de Aban Ricardo Ezequiel</span>
+            <span class="band-cliente">CLIENTE : ${clienteUpper}${cuitStr}</span>
+        </div>
+        <div class="band-row">
+            <span class="band-sub">CHILE 1239 &nbsp; CP1098 - CABA &nbsp;&nbsp; | &nbsp;&nbsp; CEL :15-61177878 &nbsp;&nbsp; support_fitness@hotmail.com</span>
+            <span class="band-fecha">FECHA : ${fechaFormateada}</span>
+        </div>
+    </div>
+
+    <!-- TABLA -->
+    <div class="tabla-wrap">
+        <table class="items">
+            <thead>
+                <tr>
+                    <th>Cantidad</th>
+                    <th style="text-align:left;"></th>
+                    <th>Disp.</th>
+                    <th>Precio Unit.</th>
+                    <th>Precio</th>
+                </tr>
+            </thead>
+            <tbody>${filasHTML}</tbody>
+        </table>
+    </div>
+
+    <!-- OBSERVACIONES -->
+    <div class="obs-bloque">
+        <textarea id="obs-area">Observaciones :
+Forma de Pago :  Pago Anticipado
+El siguiente presupuesto tiene una validez de 3 dias</textarea>
+    </div>
+
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+    <button class="btn btn-pdf" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+    <button class="btn btn-mail" onclick="abrirMail()">📧 Preparar Mail</button>
+    <button class="btn btn-close" onclick="window.close()">✕ Cerrar</button>
+</div>
+
+<script>
+function abrirMail() {
+    const cli   = ${JSON.stringify(doc.cliente || '')};
+    const cuit  = ${JSON.stringify(doc.cuit || '')};
+    const fecha = ${JSON.stringify(fechaLimpia)};
+    const tot   = ${total};
+    const asunto= encodeURIComponent('Presupuesto Support Fitness \u2014 ' + cli);
+    const cuerpo= encodeURIComponent(
+        'Buenas tardes, Se\u00f1ores de administraci\u00f3n.\n\n' +
+        'Adjunto el presupuesto correspondiente al trabajo a realizar en sus instalaciones.\n\n' +
+        'Cliente: ' + cli + '\n' +
+        (cuit ? 'CUIT: ' + cuit + '\n' : '') +
+        'Fecha: ' + fecha + '\n' +
+        (tot > 0 ? 'Monto total: $' + tot.toLocaleString('es-AR') + '\n' : '') +
+        '\nLas reparaciones quedar\u00e1n confirmadas una vez se env\u00ede el comprobante de pago correspondiente.\n\n' +
+        'Por favor Confirmar recepci\u00f3n.\n\n' +
+        'Cordiales Saludos\nFacundo Dur\u00e1n\n' +
+        'SUPPORT FITNESS\n' +
+        'Tel: +54 9 11 6117-7878  |  support_fitness@hotmail.com\n' +
+        'Chile 1239, CP1098 - CABA  |  CUIT: 20-26285613-6'
+    );
+    window.location.href = 'mailto:?subject=' + asunto + '&body=' + cuerpo;
+}
+<\/script>
+</body>
+</html>`;
+
+    const ventana = window.open('', '_blank', 'width=940,height=860,scrollbars=yes');
+    if (ventana) { ventana.document.write(html); ventana.document.close(); }
+    else { mostrarMensaje('⚠️ Habilitá los popups para este sitio e intentá de nuevo.', 'error'); }
+}
+
+// ── Registro de PDFs generados (localStorage) ────────────────────
+function registrarPDFGenerado(doc) {
+    try {
+        const historial = JSON.parse(localStorage.getItem('historial_pdfs') || '[]');
+        historial.unshift({
+            ts:       Date.now(),
+            id:       doc.id,
+            cliente:  doc.cliente || '—',
+            fecha:    doc.fechaLimpia || doc.fecha || '—',
+            total:    doc.total || 0,
+            modo:     typeof modoApp !== 'undefined' ? modoApp : '—'
+        });
+        // Guardar solo los últimos 100
+        localStorage.setItem('historial_pdfs', JSON.stringify(historial.slice(0, 100)));
+    } catch(e) {}
+}
+
+function verHistorialPDFs() {
+    try {
+        const historial = JSON.parse(localStorage.getItem('historial_pdfs') || '[]');
+        if (historial.length === 0) {
+            mostrarMensaje('No hay PDFs generados en este dispositivo todavía.', 'cargando');
+            return;
+        }
+        const modal = document.getElementById('modal-historial-pdfs');
+        const lista = document.getElementById('lista-historial-pdfs');
+        if (!modal || !lista) return;
+
+        lista.innerHTML = historial.map((r, i) => {
+            const d = new Date(r.ts);
+            const cuandoStr = d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+            const totalStr  = r.total > 0 ? '$' + Number(r.total).toLocaleString('es-AR') : '—';
+            return `<div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px;
+                    border-bottom:1px solid var(--inf-border); gap:10px; flex-wrap:wrap; animation:scaleIn 0.2s ease ${i*0.03}s both;">
+                <div style="min-width:0;">
+                    <div style="font-weight:900; font-size:14px; color:var(--inf-text);">${r.cliente}</div>
+                    <div style="font-size:12px; color:var(--inf-sub); margin-top:2px;">
+                        Doc. fecha: ${r.fecha} &nbsp;·&nbsp; ${r.modo === 'presupuestos' ? '💰 Presupuesto' : '🛠️ Oferta'}
+                    </div>
+                </div>
+                <div style="text-align:right; flex-shrink:0;">
+                    <div style="font-weight:900; color:var(--inf-azul);">${totalStr}</div>
+                    <div style="font-size:11px; color:var(--inf-muted);">Exportado: ${cuandoStr}</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('mostrar'), 10);
+    } catch(e) { mostrarMensaje('Error al leer historial.', 'error'); }
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────
+//  📧 PREPARAR MAIL (desde la tarjeta, sin abrir ventana)
+// ─────────────────────────────────────────────────────────────────
+function prepararMail(id) {
+    const doc = documentosGuardados.find(d => d.id === id);
+    if (!doc) return;
+
+    const cliente = doc.cliente || '—';
+    const total   = Number(doc.total) || 0;
+    const fecha   = doc.fecha || doc.fechaLimpia || '—';
+
+    const asunto = encodeURIComponent('Presupuesto Support Fitness — ' + cliente);
+
+    // Resumen de ítems para el mail
+    const resumenItems = (doc.items || [])
+        .map(m => `• ${m.cant > 1 ? m.cant + 'x ' : ''}${m.tipo}${m.desc ? ' (' + m.desc + ')' : ''}`)
+        .join('\n');
+
+    const cuerpo = encodeURIComponent(
+        'Buenas tardes, Señores de administración.\n\n' +
+        'Adjunto el presupuesto correspondiente al trabajo a realizar en sus instalaciones.\n\n' +
+        'Cliente: ' + cliente + '\n' +
+        (doc.cuit ? 'CUIT: ' + doc.cuit + '\n' : '') +
+        'Fecha: ' + fecha + '\n' +
+        'Monto total: $' + total.toLocaleString('es-AR') + '\n' +
+        (resumenItems ? '\nDetalle:\n' + resumenItems + '\n' : '') +
+        '\nLas reparaciones quedarán confirmadas una vez se envíe el comprobante de pago de la factura correspondiente.\n\n' +
+        'Por favor Confirmar recepción.\n\n' +
+        'Cordiales Saludos\n' +
+        'Facundo Durán\n' +
+        'SUPPORT FITNESS\n' +
+        'Tel: +54 9 11 6117-7878\n' +
+        'support_fitness@hotmail.com'
+    );
+
+    const mailto = `mailto:?subject=${asunto}&body=${cuerpo}`;
+    const link = document.createElement('a');
+    link.href = mailto;
+    link.click();
+    link.remove();
+}
+
+// ─────────────────────────────────────────────────────────────────
 // 🔥 NUEVO CAMBIO DE ESTADO (Para Múltiples Selects) 🔥
 // Variable para recordar qué presupuesto estamos intentando facturar
 let tempDocParaFactura = null;
