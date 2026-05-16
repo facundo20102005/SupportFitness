@@ -233,10 +233,18 @@ const NavBar = (() => {
         // 3. Guardar callback de dark mode
         window._navDarkCallback = config.onDarkModeChange || null;
 
-        // 4. Inyectar navs
+        // 4. Inyectar top nav siempre
         _inyectarTopNav(config);
-        if (config.mostrarBottomNav !== false) {
-            _inyectarBottomNav(config);
+
+        // 5. Bottom nav: SIEMPRE inyectarlo (para que aparezca en mobile).
+        //    Si mostrarBottomNav === false solo se oculta en DESKTOP via CSS.
+        //    En mobile siempre es visible para que haya navegación.
+        _inyectarBottomNav(config);
+
+        // Marcar si el bottom nav debe ocultarse en desktop
+        if (config.mostrarBottomNav === false) {
+            const nav = document.getElementById('bottom-nav-global');
+            if (nav) nav.classList.add('bottom-nav-desktop-hidden');
         }
     }
 

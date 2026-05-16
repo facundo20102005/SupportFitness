@@ -76,10 +76,11 @@ async function iniciarJefatura() {
     st.innerText = "Sincronizando datos... ⏳";
     st.style.display = 'block';
 
-    document.getElementById('zona-sync-btn').style.display = 'block';
+    // Mostrar botón sync
+    const btnSync = document.getElementById('btn-sincronizar-zonas');
+    if (btnSync) btnSync.style.display = 'flex';
 
     try {
-        // Cargar historial + cronograma en paralelo
         const [datosCalendario, resultadoCron] = await Promise.all([
             llamarAPI({ accion: "obtenerDatosCalendarioWeb" }),
             llamarAPI({ accion: "obtenerCronogramaDesdeSheet" }).catch(() => ({ zonas: [], historial: [] }))
@@ -89,7 +90,6 @@ async function iniciarJefatura() {
             cronogramaZonasDinamico = resultadoCron.zonas;
         }
 
-        // Combinar historial
         let combined = await llamarAPI({ accion: "obtenerRegistroHistorico" }).catch(() => []);
         (resultadoCron.historial || []).forEach(n => {
             if (!combined.some(v => v.gym === n.gym && v.año === n.año && v.mes === n.mes && v.dia === n.dia))
@@ -98,7 +98,6 @@ async function iniciarJefatura() {
         historialGlobal = combined;
 
         renderizarJefaturaCompleta(datosCalendario);
-        // 🔥 Activar el botón de historial una vez que los datos están listos 🔥
         activarBotonHistorial();
     } catch(e) {
         st.innerText = "Error al cargar datos. " + e.message;
@@ -115,7 +114,7 @@ function renderizarJefaturaCompleta(datos) {
     }
     datosCalendarioGlobal = datos;
     document.getElementById('status-jefatura').style.display = 'none';
-    document.getElementById('kpi-box').style.display = 'flex';
+    document.getElementById('kpi-box').style.display = 'grid';
     document.getElementById('cal-header').style.display = 'flex';
     document.getElementById('cal-wrapper').style.display = 'block';
     dibujarGrillaMes(fechaVistaJefatura.getFullYear(), fechaVistaJefatura.getMonth());
@@ -180,14 +179,33 @@ function actualizarKPIIngresos() {
     });
 
     const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-    const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
+
+    // Formato abreviado para mobile: $14.6M, $680K, etc.
+    const fmt = n => {
+        const v = Math.round(n);
+        if (v >= 1_000_000) return '$' + (v / 1_000_000).toLocaleString('es-AR', {maximumFractionDigits:1}) + 'M';
+        if (v >= 1_000)     return '$' + (v / 1_000).toLocaleString('es-AR', {maximumFractionDigits:0}) + 'K';
+        return '$' + v.toLocaleString('es-AR');
+    };
+    // Formato completo para el tooltip (title)
+    const fmtFull = n => '$' + Math.round(n).toLocaleString('es-AR');
 
     const tituloEl = document.getElementById('kpi-titulo-ingresos-mes');
-    if (tituloEl) tituloEl.innerText = `💰 ${meses[mesNum-1]} ${anioNum}`;
+    if (tituloEl) tituloEl.innerText = `💰 ${meses[mesNum-1].substring(0,3)} ${anioNum}`;
+
     const mesEl = document.getElementById('kpi-ingresos-mes');
-    if (mesEl) { mesEl.innerText = fmt(ingresoMes); document.getElementById('kpi-card-ingresos-mes').style.display = 'flex'; }
+    if (mesEl) {
+        mesEl.innerText = fmt(ingresoMes);
+        mesEl.title = fmtFull(ingresoMes);
+    }
     const anioEl = document.getElementById('kpi-ingresos-anio');
-    if (anioEl) { anioEl.innerText = fmt(ingresoAnio); document.getElementById('kpi-card-ingresos-anio').style.display = 'flex'; }
+    if (anioEl) {
+        anioEl.innerText = fmt(ingresoAnio);
+        anioEl.title = fmtFull(ingresoAnio);
+    }
+    // Mostrar el segundo grid de ingresos
+    const boxIngresos = document.getElementById('kpi-box-ingresos');
+    if (boxIngresos) boxIngresos.style.display = 'grid';
 }
 
 // ── Calendario ────────────────────────────────────────────
@@ -374,26 +392,33 @@ async function forzarRefreshHistorial() {
 async function sincronizarHistorialEnZonasDesdeApp() {
     const btn    = document.getElementById('btn-sincronizar-zonas');
     const status = document.getElementById('status-sync-zonas');
+
     mostrarConfirmacion(
         "Esto va a rellenar las hojas Zona 1-5 del Sheet con los días de visita de todo el historial.\n\n⏳ Puede tardar hasta 30 segundos. ¿Continuamos?",
         async (ok) => {
             if (!ok) return;
             btn.disabled = true; btn.style.opacity = '0.6';
             btn.innerText = '⏳ Sincronizando...';
-            status.style.display = 'block'; status.style.background = '#e8f0fe';
-            status.style.color = '#1a73e8'; status.style.border = '1px solid #aecbfa';
+            status.style.display = 'block';
+            status.style.background = '#e8f0fe';
+            status.style.color = '#1a73e8';
+            status.style.border = '1px solid #aecbfa';
             status.innerText = 'Conectando con Google Sheets... ☁️';
             try {
                 const r = await llamarAPI({ accion: "sincronizarHistorialEnZonas" });
-                status.style.background = '#e6f4ea'; status.style.color = '#0b7a42';
-                status.style.border = '1px solid #a8d5b5'; status.innerText = r;
+                status.style.background = '#e6f4ea';
+                status.style.color = '#0b7a42';
+                status.style.border = '1px solid #a8d5b5';
+                status.innerText = r;
                 forzarRefreshHistorial();
             } catch(e) {
-                status.style.background = '#fce8e6'; status.style.color = '#d93025';
-                status.style.border = '1px solid #f28b82'; status.innerText = '❌ Error: ' + e.message;
+                status.style.background = '#fce8e6';
+                status.style.color = '#d93025';
+                status.style.border = '1px solid #f28b82';
+                status.innerText = '❌ Error: ' + e.message;
             } finally {
                 btn.disabled = false; btn.style.opacity = '1';
-                btn.innerText = '📋 Sincronizar Historial → Hojas de Zona (Sheet)';
+                btn.innerText = '📋 Sincronizar Historial → Hojas de Zona';
                 setTimeout(() => { status.style.display = 'none'; }, 10000);
             }
         }

@@ -306,73 +306,27 @@ function cerrarVistas() {
 
 // ── Historial anual (accesible desde el botón en el nav) ──────────────────
 // --- NUEVO SISTEMA DE COMPRESIÓN DE IMÁGENES AUTOMÁTICO ---
-document.getElementById('archivo-oculto').addEventListener('change', function (e) { for (let i = 0; i < this.files.length; i++) { archivosSeleccionados.push(this.files[i]); } this.value = ""; renderizarArchivos(); });
+document.getElementById('archivo-oculto').addEventListener('change', function (e) {
+    for (let i = 0; i < this.files.length; i++) { archivosSeleccionados.push(this.files[i]); }
+    this.value = "";
+    renderizarArchivos();
+});
+
 function renderizarArchivos() {
+    // Usar el renderer mejorado del HTML si está disponible
+    if (window._renderizarFotos) {
+        window._renderizarFotos(archivosSeleccionados);
+        return;
+    }
+    // Fallback original
     let divLista = document.getElementById('lista-archivos');
     divLista.innerHTML = "";
-    if (archivosSeleccionados.length === 0) return;
-
-    // Contenedor de miniaturas
-    let grid = document.createElement("div");
-    grid.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; margin-top:8px;";
-
     archivosSeleccionados.forEach((archivo, index) => {
-        let wrapper = document.createElement("div");
-        wrapper.style.cssText = "position:relative; width:80px; height:80px; border-radius:10px; overflow:hidden; border:2px solid #1a73e8; flex-shrink:0; animation:fadeInUp 0.25s ease;";
-
-        let isImg = archivo.type.startsWith("image/");
-
-        if (isImg) {
-            let img = document.createElement("img");
-            img.style.cssText = "width:100%; height:100%; object-fit:cover; cursor:zoom-in; display:block;";
-            img.title = archivo.name;
-            let url = URL.createObjectURL(archivo);
-            img.src = url;
-            img.onclick = () => abrirPreviewImagen(url, archivo.name);
-            wrapper.appendChild(img);
-        } else {
-            // PDF u otro archivo
-            let placeholder = document.createElement("div");
-            placeholder.style.cssText = "width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#e8f0fe; color:#1a73e8; font-size:11px; font-weight:700; text-align:center; padding:4px; word-break:break-all; gap:4px;";
-            placeholder.innerHTML = `<span style="font-size:26px;">📄</span>${archivo.name.length > 12 ? archivo.name.substring(0,12)+'…' : archivo.name}`;
-            wrapper.appendChild(placeholder);
-        }
-
-        // Botón eliminar
-        let btnX = document.createElement("button");
-        btnX.innerHTML = "✕";
-        btnX.title = "Eliminar";
-        btnX.style.cssText = "position:absolute; top:2px; right:2px; background:rgba(217,48,37,0.88); color:white; border:none; border-radius:50%; width:20px; height:20px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; padding:0;";
-        btnX.onclick = () => eliminarArchivo(index);
-        wrapper.appendChild(btnX);
-
-        grid.appendChild(wrapper);
+        let item = document.createElement("div");
+        item.className = "archivo-item";
+        item.innerHTML = `<span class="archivo-item-name">📄 ${archivo.name}</span><span class="archivo-item-delete" onclick="eliminarArchivo(${index})" title="Eliminar archivo">✖</span>`;
+        divLista.appendChild(item);
     });
-
-    divLista.appendChild(grid);
-    divLista.insertAdjacentHTML('beforeend', `<p style="font-size:12px; color:#5f6368; margin:8px 0 0; font-weight:600;">${archivosSeleccionados.length} archivo(s) seleccionado(s)</p>`);
-}
-
-function abrirPreviewImagen(url, nombre) {
-    // Reutilizar el modal si existe, si no crear uno temporal
-    let modal = document.getElementById('modal-img-preview-formulario');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'modal-img-preview-formulario';
-        modal.style.cssText = "display:none; position:fixed; inset:0; background:rgba(0,0,0,0.87); z-index:9999; align-items:center; justify-content:center; cursor:zoom-out;";
-        modal.innerHTML = `
-            <button id="mpf-close" style="position:fixed; top:16px; right:20px; font-size:36px; color:white; cursor:pointer; background:none; border:none; font-weight:bold; text-shadow:0 2px 4px rgba(0,0,0,0.5);">&times;</button>
-            <img id="mpf-img" src="" alt="Vista ampliada" style="max-width:95vw; max-height:90vh; border-radius:8px; box-shadow:0 8px 40px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
-        `;
-        modal.onclick = () => { modal.style.display = 'none'; };
-        document.getElementById('mpf-close')?.addEventListener('click', () => { modal.style.display = 'none'; });
-        document.body.appendChild(modal);
-        // Bind close btn after inserting
-        modal.querySelector('#mpf-close').onclick = (e) => { e.stopPropagation(); modal.style.display = 'none'; };
-    }
-    modal.querySelector('#mpf-img').src = url;
-    modal.querySelector('#mpf-img').alt = nombre;
-    modal.style.display = 'flex';
 }
 function eliminarArchivo(index) { archivosSeleccionados.splice(index, 1); renderizarArchivos(); }
 function toggleHistorial() { const panel = document.getElementById("contenedor-meses"); const btn = document.getElementById("btnToggle"); if (panel.classList.contains("mostrar-en-movil")) { panel.classList.remove("mostrar-en-movil"); btn.innerText = "Ver Historial de Visitas ▼"; } else { panel.classList.add("mostrar-en-movil"); btn.innerText = "Ocultar Historial ▲"; } }

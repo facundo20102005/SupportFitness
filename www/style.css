@@ -38,24 +38,38 @@
     --rojo:       #d93025;
     --rojo-light: #fce8e6;
     --amarillo:   #f9ab00;
-    --gris-fondo: #f0f2f5;
-    --gris-borde: #dadce0;
-    --gris-texto: #3c4043;
-    --gris-sub:   #5f6368;
+    /* ─ MODO DIURNO TÉCNICO: fondo levemente cálido, no blanco puro ─ */
+    --gris-fondo: #f4f6f9;
+    --gris-borde: #d0d5dd;
+    --gris-texto: #1d2939;     /* texto más oscuro = más legible al sol */
+    --gris-sub:   #475467;
     --blanco:     #ffffff;
-    --sombra-s:   0 1px 4px rgba(0,0,0,0.08);
-    --sombra-m:   0 2px 10px rgba(0,0,0,0.1);
-    --sombra-l:   0 4px 20px rgba(0,0,0,0.15);
-    --radio-s:    8px;
-    --radio-m:    12px;
-    --radio-l:    20px;
+    --sombra-s:   0 1px 4px rgba(0,0,0,0.10);
+    --sombra-m:   0 3px 12px rgba(0,0,0,0.13);
+    --sombra-l:   0 6px 24px rgba(0,0,0,0.16);
+    --radio-s:    10px;
+    --radio-m:    14px;
+    --radio-l:    22px;
     --nav-h:      60px;
-    --bottom-nav-h: 68px; /* espacio para barra inferior en mobile */
+    --bottom-nav-h: 68px;
     --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Fondo base del técnico: contraste alto, no fatiga */
+body {
+    background-color: var(--gris-fondo);
+    font-family: 'Nunito', sans-serif;
+    color: var(--gris-texto);
+    transition: background-color 0.35s ease, color 0.35s ease;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+
+/* Botón historial anual: solo en mobile */
+#btn-historial-movil { display: none !important; }
+@media (max-width: 768px) { #btn-historial-movil { display: block !important; } }
+
 .top-nav {
     position: sticky;
     top: 0;
@@ -223,16 +237,18 @@ html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; overfl
    ============================================================ */
 .card {
     background: var(--blanco);
-    padding: 18px 20px;
+    padding: 20px 20px;
     margin-bottom: 25px;
     border-radius: var(--radio-m);
     box-shadow: var(--sombra-s);
+    border-left: 4px solid transparent;
+    border: 1px solid rgba(0,0,0,0.07);
     border-left: 4px solid transparent;
     transition: border-color var(--transition), box-shadow var(--transition), background var(--transition), transform var(--transition);
     animation: scaleIn 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) both;
 }
 .card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     box-shadow: var(--sombra-m);
 }
 .card:focus-within {
@@ -243,27 +259,28 @@ html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; overfl
 .card#card-archivo { border-left-color: transparent; }
 
 h3 {
-    font-size: 13px;
-    font-weight: 800;
+    font-size: 12px;
+    font-weight: 900;
     color: var(--gris-sub);
     text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 10px;
+    letter-spacing: 0.7px;
+    margin-bottom: 12px;
 }
 
 /* ============================================================
-   INPUTS
+   INPUTS — más altos y legibles para uso en campo
    ============================================================ */
 input[type="text"],
 input[type="number"],
 input[type="password"],
 #buscador {
     width: 100%;
-    padding: 13px 14px;
+    padding: 15px 14px;   /* más alto = más fácil de tocar */
     margin-top: 6px;
-    border: 1.5px solid var(--gris-borde);
+    border: 2px solid var(--gris-borde);  /* borde más grueso = más visible */
     border-radius: var(--radio-s);
-    font-size: 15px;
+    font-size: 16px;      /* 16px evita zoom en iOS */
+    font-weight: 600;
     color: var(--gris-texto);
     background: var(--blanco);
     transition: border-color var(--transition), box-shadow var(--transition);
@@ -274,7 +291,7 @@ input[type="password"]:focus,
 #buscador:focus {
     outline: none;
     border-color: var(--azul);
-    box-shadow: 0 0 0 3px rgba(26,115,232,0.12);
+    box-shadow: 0 0 0 4px rgba(26,115,232,0.14);
 }
 .error-input {
     border: 2px solid var(--rojo) !important;
@@ -320,10 +337,11 @@ input[type="password"]:focus,
     box-shadow: var(--sombra-m);
 }
 .gym-list-item {
-    padding: 13px 15px;
+    padding: 15px 16px;    /* más alto = dedos grandes */
     cursor: pointer;
     border-bottom: 1px solid #f1f3f4;
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--gris-texto);
     transition: background var(--transition);
 }
@@ -438,23 +456,31 @@ input[type="radio"] {
 }
 
 button.btn-submit {
-    background: var(--azul);
+    background: linear-gradient(135deg, var(--azul), var(--azul-dark));
     color: white;
-    padding: 16px;
+    padding: 17px 16px;
     border: none;
     border-radius: var(--radio-m);
     cursor: pointer;
     width: 100%;
     font-size: 17px;
-    font-weight: 800;
+    font-weight: 900;
     margin-top: 14px;
-    box-shadow: 0 4px 14px rgba(26,115,232,0.4);
+    box-shadow: 0 4px 16px rgba(26,115,232,0.45), 0 1px 3px rgba(0,0,0,0.1);
     transition: transform var(--transition), box-shadow var(--transition), background var(--transition);
     pointer-events: all;
-    letter-spacing: 0.3px;
+    letter-spacing: -0.2px;
     position: relative;
     overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
 }
+/* Botón principal de enviar = verde (acción más importante) */
+#btnEnviar {
+    background: linear-gradient(135deg, #0f9d58, #0b7a42) !important;
+    box-shadow: 0 4px 16px rgba(15,157,88,0.45), 0 1px 3px rgba(0,0,0,0.1) !important;
+    font-size: 17px !important;
+}
+#btnEnviar:active { box-shadow: 0 2px 6px rgba(15,157,88,0.3) !important; }
 button.btn-submit::after {
     content: '';
     position: absolute;
@@ -465,8 +491,9 @@ button.btn-submit::after {
 }
 button.btn-submit:hover::after { transform: translateX(100%); }
 button.btn-submit:hover { box-shadow: 0 6px 20px rgba(26,115,232,0.5); transform: translateY(-1px); }
-button.btn-submit:active { transform: scale(0.98) translateY(0); box-shadow: 0 2px 6px rgba(26,115,232,0.3); }
-button.btn-submit:disabled { background: var(--gris-borde); color: #999; box-shadow: none; cursor: not-allowed; transform: none; }
+button.btn-submit:active { transform: scale(0.97) translateY(1px); }
+button.btn-submit:disabled { background: var(--gris-borde) !important; color: #999; box-shadow: none !important; cursor: not-allowed; transform: none; }
+
 
 /* ============================================================
    STATUS / ALERTAS INLINE
@@ -685,12 +712,28 @@ button.btn-submit:disabled { background: var(--gris-borde); color: #999; box-sha
     box-shadow: var(--sombra-s);
     -webkit-overflow-scrolling: touch;
 }
+.calendario-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 14px;
+    background: var(--blanco);
+    border: 1px solid rgba(0,0,0,0.07);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
 .calendario-grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(120px, 1fr));
+    grid-template-columns: repeat(7, minmax(100px, 1fr));
     border-left: 1px solid #eee;
     border-top: 1px solid #eee;
-    min-width: 750px;
+    min-width: 600px;
+}
+@media (max-width: 768px) {
+    .calendario-grid {
+        min-width: 480px;
+    }
+    .cal-celda { min-height: 80px; padding: 5px; }
+    .cal-dia-header { padding: 7px 4px; font-size: 11px; }
 }
 .cal-dia-header {
     background: var(--azul);
@@ -855,6 +898,20 @@ body.dark-mode .cell-visit { background: #166534 !important; color: #86efac !imp
     line-height: 1;
 }
 #imgLupa { max-width: 92%; max-height: 90vh; border-radius: var(--radio-s); box-shadow: var(--sombra-l); }
+
+/* Bottom nav oculto en desktop para páginas admin, SIEMPRE visible en mobile */
+.bottom-nav-desktop-hidden {
+    display: none !important;
+}
+@media (max-width: 768px) {
+    .bottom-nav-desktop-hidden {
+        display: flex !important;
+    }
+    /* Agregar padding-bottom al body cuando hay bottom nav en mobile */
+    body:has(.bottom-nav-desktop-hidden) {
+        padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px)) !important;
+    }
+}
 
 /* ============================================================
    BARRA DE NAVEGACIÓN INFERIOR (mobile-first)
@@ -1135,24 +1192,27 @@ body {
 
 /* ── FONDOS Y TEXTOS BASE ── */
 body.dark-mode {
-    background: radial-gradient(ellipse at top, #1a2035 0%, #0f1117 60%) !important;
+    /* Fondo más cálido, no azul puro — menos fatiga visual nocturna */
+    background: #0f1117 !important;
     color: #e2e8f0 !important;
 }
 body.dark-mode .layout-principal, body.dark-mode .container { background-color: transparent !important; }
 
 /* ── TARJETAS Y MODALES ── */
 body.dark-mode .card {
-    background: linear-gradient(145deg, #1e2435, #181c28) !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) !important;
-    border-color: rgba(255,255,255,0.04) !important;
+    background: #1a1f2e !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.06) !important;
+    border-left-color: transparent !important;
 }
+body.dark-mode .card:focus-within { border-left-color: #60a5fa !important; }
 body.dark-mode .card:hover {
-    box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 0 1px rgba(100,180,255,0.1) !important;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(96,165,250,0.12) !important;
 }
-body.dark-mode .modal-content, body.dark-mode #mensaje-inicial, body.dark-mode .maquina-item { 
-    background: linear-gradient(145deg, #1e2435, #181c28) !important;
+body.dark-mode .modal-content, body.dark-mode #mensaje-inicial, body.dark-mode .maquina-item {
+    background: #1a1f2e !important;
     box-shadow: 0 8px 40px rgba(0,0,0,0.7) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important; 
+    border: 1px solid rgba(255,255,255,0.07) !important;
 }
 
 /* ── NAVBARS ── */
@@ -1427,4 +1487,100 @@ body.dark-mode [style*="color: #444"] { color: #94a3b8 !important; }
 .bottom-nav-btn .bnav-icon {
     font-size: 20px;
     margin-bottom: 3px;
+}
+/* ============================================================
+   MOBILE FIXES GLOBALES — Support Fitness
+   ============================================================ */
+@media (max-width: 768px) {
+
+    /* ── Padding top correcto tras el nav fijo ── */
+    body { padding-top: 60px; }
+
+    /* ── Cards y containers: sin overflow horizontal ── */
+    .card, .inf-card, .abono-card, .doc-card-v3, .kpi-card,
+    .maquina-item, .tapizado-item, .section-header {
+        overflow: hidden;
+        word-break: break-word;
+    }
+
+    /* ── Modal historial anual: full width ── */
+    .modal-content {
+        width: 95% !important;
+        max-width: 95% !important;
+        max-height: 85vh !important;
+        overflow-y: auto !important;
+        margin: auto !important;
+        border-radius: 16px !important;
+    }
+
+    /* ── Excel table historial: scroll horizontal ── */
+    .zona-tabla-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    .excel-table { min-width: 800px; }
+
+    /* ── Grilla de motivos: 1 col en muy pequeño ── */
+    .motivos-rapidos { grid-template-columns: 1fr 1fr; }
+
+    /* ── Reparación cards ── */
+    .rep-opciones { gap: 8px; }
+    .rep-card { padding: 12px 8px; min-height: 65px; }
+
+    /* ── Sub-tabs Informes ── */
+    .sub-tabs { flex-direction: row; }
+    .sub-tab { padding: 12px 8px; font-size: 13px; }
+
+    /* ── KPI ingresos: valor se achica en mobile ── */
+    #kpi-ingresos-mes, #kpi-ingresos-anio {
+        font-size: clamp(13px, 3.5vw, 18px) !important;
+        word-break: break-all;
+    }
+
+    /* ── Formulario item ── */
+    .item-grid { grid-template-columns: 1fr 1fr !important; }
+
+    /* ── Form grid 2 cols en Informes ── */
+    .form-grid-2 { grid-template-columns: 1fr !important; }
+
+    /* ── Botón sync jefatura ── */
+    .btn-sync { font-size: 13px; padding: 13px 14px; }
+
+    /* ── Tapizados nums grid ── */
+    .tap-nums-grid { grid-template-columns: 1fr 1fr; }
+
+    /* ── Abono actions wrap ── */
+    .abono-actions { flex-wrap: wrap; }
+    .btn-facturar, .btn-enviar, .btn-copiar { font-size: 13px; }
+
+    /* ── Doc card badges wrap ── */
+    .doc-header-v3 { flex-wrap: wrap; gap: 8px; }
+
+    /* ── Modo tabs Informes ── */
+    .modo-tab { font-size: 12px; padding: 10px 6px; }
+    .modo-tab .tab-icon { font-size: 18px; }
+
+    /* ── Filtros estado ── */
+    .filtros-estado { gap: 4px; }
+    .btn-filtro-estado { padding: 8px 4px; font-size: 11px; }
+
+    /* ── Sector tabs abonos ── */
+    .sector-tabs { gap: 4px; }
+    .sector-tab { padding: 10px 4px; font-size: 11px; }
+
+    /* ── Input factura abono ── */
+    .inp-factura { font-size: 15px; }
+
+    /* ── Botón flotante dark ── */
+    .btn-flotante-dark { bottom: calc(var(--bottom-nav-h) + 14px); }
+}
+
+@media (max-width: 380px) {
+    /* ── Pantallas muy pequeñas ── */
+    .modo-tabs { gap: 2px; padding: 3px; }
+    .modo-tab { font-size: 10px; padding: 8px 4px; }
+    .modo-tab .tab-icon { font-size: 16px; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .kpi-value { font-size: 14px !important; }
+    .sub-tab { font-size: 12px; padding: 11px 6px; }
 }

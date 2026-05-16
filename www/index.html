@@ -12,103 +12,518 @@
     <link rel="stylesheet" href="style.css">
     <script src="nav.js"></script>
     <script src="app.js" defer></script>
+    <style>
+        /* ─── MEJORAS TÉCNICO EN CAMPO ─────────────────────────────── */
+
+        /* Nombre técnico recordado: chip compacto en la parte superior */
+        #chip-tecnico {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            background: #e8f0fe;
+            border: 1.5px solid #aecbfa;
+            border-radius: 30px;
+            padding: 8px 14px 8px 10px;
+            margin-bottom: 18px;
+            font-weight: 800;
+            font-size: 14px;
+            color: #1a73e8;
+            cursor: pointer;
+            transition: all 0.2s;
+            animation: fadeUp 0.4s ease both;
+        }
+        #chip-tecnico:active { background: #d2e3fc; }
+        #chip-tecnico .chip-avatar {
+            width: 32px; height: 32px;
+            background: #1a73e8; color: white;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 900; flex-shrink: 0;
+        }
+        #chip-tecnico .chip-cambiar {
+            margin-left: auto;
+            font-size: 11px;
+            color: #5f6368;
+            font-weight: 600;
+        }
+        body.dark-mode #chip-tecnico {
+            background: rgba(96,165,250,0.12);
+            border-color: rgba(96,165,250,0.3);
+            color: #60a5fa;
+        }
+        body.dark-mode #chip-tecnico .chip-avatar { background: #1e3a8a; color: #60a5fa; }
+
+        /* Botones rápidos de motivo */
+        .motivos-rapidos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .btn-motivo-rapido {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding: 14px 10px;
+            border: 2px solid #dadce0;
+            border-radius: 12px;
+            background: white;
+            font-weight: 700;
+            font-size: 13px;
+            color: #3c4043;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
+            text-align: center;
+            line-height: 1.2;
+            min-height: 72px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-motivo-rapido .motivo-icon { font-size: 22px; }
+        .btn-motivo-rapido.seleccionado {
+            border-color: #1a73e8;
+            background: #e8f0fe;
+            color: #1a73e8;
+            box-shadow: 0 0 0 3px rgba(26,115,232,0.15);
+            transform: scale(1.03);
+        }
+        .btn-motivo-rapido:active { transform: scale(0.96); }
+        body.dark-mode .btn-motivo-rapido {
+            background: #1e2435;
+            border-color: rgba(255,255,255,0.1);
+            color: #94a3b8;
+        }
+        body.dark-mode .btn-motivo-rapido.seleccionado {
+            background: rgba(96,165,250,0.15);
+            border-color: #60a5fa;
+            color: #60a5fa;
+        }
+
+        /* Tags de motivos adicionales */
+        .motivo-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e8f0fe;
+            color: #1a73e8;
+            border: 1.5px solid #aecbfa;
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            animation: fadeUp 0.2s ease both;
+        }
+        .motivo-tag:active { transform: scale(0.95); }
+        .motivo-tag .tag-del {
+            font-size: 14px;
+            font-weight: 900;
+            color: #d93025;
+            margin-left: 2px;
+        }
+        body.dark-mode .motivo-tag {
+            background: rgba(96,165,250,0.12);
+            border-color: rgba(96,165,250,0.3);
+            color: #60a5fa;
+        }
+
+        /* Preview de imágenes al subir */
+        .fotos-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .foto-thumb {
+            position: relative;
+            width: 76px; height: 76px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #1a73e8;
+            cursor: pointer;
+            transition: transform 0.2s;
+            animation: fadeUp 0.3s ease both;
+            background: #f1f3f4;
+        }
+        .foto-thumb:active { transform: scale(0.94); }
+        .foto-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .foto-thumb .foto-del {
+            position: absolute; top: 3px; right: 3px;
+            width: 20px; height: 20px;
+            background: rgba(217,48,37,0.9);
+            color: white; border: none; border-radius: 50%;
+            font-size: 11px; font-weight: 900; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            line-height: 1;
+        }
+        .foto-pdf {
+            width: 76px; height: 76px;
+            border-radius: 10px;
+            border: 2px solid #1a73e8;
+            background: #e8f0fe;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            font-size: 10px; color: #1a73e8; font-weight: 800;
+            text-align: center; padding: 4px;
+            gap: 3px; cursor: pointer;
+            animation: fadeUp 0.3s ease both;
+        }
+        .foto-pdf .pdf-icon { font-size: 24px; }
+
+        /* Botón enviar mejorado */
+        #btnEnviar {
+            position: relative;
+            overflow: hidden;
+        }
+        #btnEnviar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        /* Progress steps */
+        .form-progress {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 20px;
+            padding: 0 4px;
+        }
+        .step-dot {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            color: #999;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 800;
+            flex-shrink: 0;
+            transition: all 0.3s;
+            position: relative;
+            z-index: 1;
+        }
+        .step-dot.done   { background: #0f9d58; color: white; }
+        .step-dot.active { background: #1a73e8; color: white; box-shadow: 0 0 0 4px rgba(26,115,232,0.2); }
+        .step-line {
+            flex: 1; height: 3px;
+            background: #e0e0e0;
+            transition: background 0.3s;
+        }
+        .step-line.done { background: #0f9d58; }
+        body.dark-mode .step-dot { background: #1e2435; color: #4a5578; }
+        body.dark-mode .step-line { background: #1e2435; }
+        body.dark-mode .step-dot.done { background: #134e31; color: #4ade80; }
+        body.dark-mode .step-dot.active { background: #1e3a8a; color: #60a5fa; box-shadow: 0 0 0 4px rgba(96,165,250,0.2); }
+        body.dark-mode .step-line.done { background: #134e31; }
+
+        /* Reparación tipo card visual */
+        .rep-opciones {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .rep-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 14px 10px;
+            border: 2px solid #dadce0;
+            border-radius: 12px;
+            background: white;
+            font-size: 13px;
+            font-weight: 700;
+            color: #5f6368;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
+            text-align: center;
+            min-height: 72px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .rep-card .rep-icon { font-size: 22px; }
+        .rep-card.seleccionada-si {
+            border-color: #d93025;
+            background: #fce8e6;
+            color: #d93025;
+            box-shadow: 0 0 0 3px rgba(217,48,37,0.12);
+            transform: scale(1.03);
+        }
+        .rep-card.seleccionada-no {
+            border-color: #0f9d58;
+            background: #e6f4ea;
+            color: #0f9d58;
+            box-shadow: 0 0 0 3px rgba(15,157,88,0.12);
+            transform: scale(1.03);
+        }
+        .rep-card:active { transform: scale(0.96); }
+        body.dark-mode .rep-card {
+            background: #1e2435;
+            border-color: rgba(255,255,255,0.1);
+            color: #94a3b8;
+        }
+        body.dark-mode .rep-card.seleccionada-si {
+            background: rgba(217,48,37,0.12);
+            border-color: #f87171;
+            color: #f87171;
+        }
+        body.dark-mode .rep-card.seleccionada-no {
+            background: rgba(15,157,88,0.12);
+            border-color: #4ade80;
+            color: #4ade80;
+        }
+
+        /* Tapizado card */
+        .tap-opciones {
+            display: flex;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .tap-card {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #dadce0;
+            border-radius: 10px;
+            background: white;
+            font-size: 13px;
+            font-weight: 700;
+            color: #5f6368;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .tap-card.activo {
+            border-color: #f59e0b;
+            background: #fffbeb;
+            color: #b45309;
+        }
+        body.dark-mode .tap-card { background: #1e2435; border-color: rgba(255,255,255,0.1); color: #94a3b8; }
+        body.dark-mode .tap-card.activo { background: rgba(245,158,11,0.12); border-color: #f59e0b; color: #f59e0b; }
+
+        /* Status mejorado */
+        #status.status.mostrar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 18px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            margin-top: 16px;
+        }
+        #status.status.mostrar.cargando { animation: pulse-border 1.5s infinite; }
+        @keyframes pulse-border {
+            0%,100% { box-shadow: 0 0 0 0 rgba(26,115,232,0.2); }
+            50% { box-shadow: 0 0 0 6px rgba(26,115,232,0); }
+        }
+        #status.status.mostrar.exito { animation: bounceIn 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+        @keyframes bounceIn {
+            from { transform: scale(0.8); opacity:0; }
+            to   { transform: scale(1); opacity:1; }
+        }
+
+        /* Card mejorada para técnico */
+        .card-tecnico-wrap { position: relative; }
+        .tecnico-saved-hint {
+            position: absolute;
+            top: 18px; right: 18px;
+            font-size: 11px; font-weight: 700;
+            color: #0f9d58;
+            background: #e6f4ea;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+    </style>
 </head>
 <body>
 
-    <!-- ===== FORMULARIO TÉCNICOS prueba ===== -->
+    <!-- ===== FORMULARIO TÉCNICOS ===== -->
     <main class="layout-principal vista" id="vista-formulario">
         <div class="container">
 
-            <button id="btn-historial-movil" class="btn-submit"
-                    style="display:none; margin-top:0; margin-bottom:20px; background:#e8f0fe; color:#1a73e8;" disabled>
+            <!-- Botón historial anual (solo mobile, se activa cuando carga) -->
+            <button id="btn-historial-movil"
+                    style="display:none; width:100%; margin-bottom:14px; padding:14px; font-size:14px;
+                           font-weight:800; border-radius:12px; border:none; cursor:pointer;
+                           background:#e8f0fe; color:#1a73e8; transition:all 0.3s;"
+                    disabled>
                 ⏳ Cargando historial...
             </button>
+            <div class="form-progress" id="form-progress" style="margin-top:6px;">
+                <div class="step-dot active" id="step-1" title="Técnico">👤</div>
+                <div class="step-line" id="line-1"></div>
+                <div class="step-dot" id="step-2" title="Gimnasio">🏋️</div>
+                <div class="step-line" id="line-2"></div>
+                <div class="step-dot" id="step-3" title="Motivo">📋</div>
+                <div class="step-line" id="line-3"></div>
+                <div class="step-dot" id="step-4" title="Fotos">📸</div>
+                <div class="step-line" id="line-4"></div>
+                <div class="step-dot" id="step-5" title="Enviar">✅</div>
+            </div>
+
+            <!-- Chip técnico (se muestra cuando ya hay nombre guardado) -->
+            <div id="chip-tecnico" onclick="editarTecnico()">
+                <div class="chip-avatar" id="chip-avatar">?</div>
+                <div>
+                    <div style="font-size:11px; color:#5f6368; font-weight:600; margin-bottom:1px;">Técnico registrado</div>
+                    <div id="chip-nombre" style="font-size:14px;">—</div>
+                </div>
+                <span class="chip-cambiar">Cambiar ✏️</span>
+            </div>
 
             <form id="visitaForm" onsubmit="return false;">
 
-                <div class="card" id="card-tecnico" style="margin-bottom:25px;">
-                    <h3>Técnico *</h3>
-                    <input type="text" id="tecnico" placeholder="Tu nombre" required autocomplete="name">
+                <!-- ─── PASO 1: TÉCNICO ─── -->
+                <div class="card card-tecnico-wrap" id="card-tecnico" style="margin-bottom:18px;">
+                    <h3>👤 Técnico *</h3>
+                    <div id="tecnico-saved-hint" class="tecnico-saved-hint" style="display:none;">✅ Guardado</div>
+                    <input type="text" id="tecnico" placeholder="Tu nombre completo"
+                           required autocomplete="name"
+                           oninput="actualizarProgress()" onblur="guardarTecnicoRapido()">
                 </div>
 
-                <div class="card" id="card-gimnasio" style="margin-bottom:25px;">
-                    <h3>Gimnasio *</h3>
+                <!-- ─── PASO 2: GIMNASIO ─── -->
+                <div class="card" id="card-gimnasio" style="margin-bottom:18px;">
+                    <h3>🏋️ Gimnasio *</h3>
                     <div class="buscador-container">
                         <div id="ghost"></div>
-                        <input type="text" id="buscador" placeholder="Buscar gimnasio..."
-                               oninput="filtrar()" onfocus="filtrar()" autocomplete="off" inputmode="search">
+                        <input type="text" id="buscador"
+                               placeholder="Buscar gimnasio..."
+                               oninput="filtrar(); actualizarProgress()"
+                               onfocus="filtrar()"
+                               autocomplete="off"
+                               inputmode="search">
                     </div>
                     <div id="lista"></div>
-                    <label style="display:block; margin-top:12px; font-size:13px; color:#5f6368; font-weight:600;">
-                        ¿No está en la lista? Escribilo acá:
-                    </label>
-                    <input type="text" id="otroGimnasio" placeholder="Nombre del gimnasio">
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+                        <div style="flex:1; height:1px; background:#f1f3f4;"></div>
+                        <span style="font-size:11px; color:#9aa0a6; font-weight:600; white-space:nowrap;">¿No está en la lista?</span>
+                        <div style="flex:1; height:1px; background:#f1f3f4;"></div>
+                    </div>
+                    <input type="text" id="otroGimnasio"
+                           placeholder="Escribir nombre del gimnasio"
+                           style="margin-top:8px;"
+                           oninput="actualizarProgress()">
                 </div>
 
-                <div class="card" id="card-motivo" style="margin-bottom:25px;">
-                    <h3>Motivo de Visita *</h3>
-                    <label class="motivo-label">
-                        <input type="checkbox" value="Preventivo" class="motivo"> Mantenimiento Preventivo
-                    </label>
-                    <label class="motivo-label">
-                        <input type="checkbox" value="No Programado" class="motivo"> Mantenimiento no Programado
-                    </label>
-                    <label class="motivo-label">
-                        <input type="checkbox" value="Reparación" class="motivo"> Reparación
-                    </label>
-                    <label class="motivo-label">
-                        <input type="checkbox" value="Revisión de Reparación" class="motivo"> Revisión de Reparación
-                    </label>
-                    <label style="display:block; margin-top:15px; font-size:13px; color:#5f6368; font-weight:600;">
-                        Otros motivos o detalle de las reparaciones:
-                    </label>
+                <!-- ─── PASO 3: MOTIVO ─── -->
+                <div class="card" id="card-motivo" style="margin-bottom:18px;">
+                    <h3>📋 Motivo de Visita *</h3>
+
+                    <!-- Botones rápidos visuales -->
+                    <div class="motivos-rapidos">
+                        <button type="button" class="btn-motivo-rapido"
+                                data-valor="Preventivo"
+                                onclick="toggleMotivoRapido(this)">
+                            <span class="motivo-icon">🔧</span>
+                            Mantenimiento Preventivo
+                            <input type="checkbox" value="Preventivo" class="motivo" style="display:none;">
+                        </button>
+                        <button type="button" class="btn-motivo-rapido"
+                                data-valor="No Programado"
+                                onclick="toggleMotivoRapido(this)">
+                            <span class="motivo-icon">⚡</span>
+                            No Programado
+                            <input type="checkbox" value="No Programado" class="motivo" style="display:none;">
+                        </button>
+                        <button type="button" class="btn-motivo-rapido"
+                                data-valor="Reparación"
+                                onclick="toggleMotivoRapido(this)">
+                            <span class="motivo-icon">🛠️</span>
+                            Reparación
+                            <input type="checkbox" value="Reparación" class="motivo" style="display:none;">
+                        </button>
+                        <button type="button" class="btn-motivo-rapido"
+                                data-valor="Revisión de Reparación"
+                                onclick="toggleMotivoRapido(this)">
+                            <span class="motivo-icon">🔍</span>
+                            Revisión de Reparación
+                            <input type="checkbox" value="Revisión de Reparación" class="motivo" style="display:none;">
+                        </button>
+                    </div>
+
+                    <!-- Tags de otros motivos -->
                     <div id="contenedor-otros-motivos"
-                         style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px; margin-top:8px;"></div>
+                         style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; margin-top:4px;"></div>
+
+                    <!-- Input para agregar más -->
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="input-otro-motivo" placeholder="Escribir y tocar + o Enter (Ej: Cinta polea)"
-                               style="flex:1; margin-top:0; padding:12px; border:1.5px solid #1a73e8; border-radius:8px;"
+                        <input type="text" id="input-otro-motivo"
+                               placeholder="+ Agregar detalle (Ej: Banda de cinta)"
+                               style="flex:1; margin-top:0; padding:12px; border:1.5px solid #1a73e8; border-radius:8px; font-size:14px;"
                                onkeydown="if(event.key==='Enter'){event.preventDefault();agregarOtroMotivo();}">
                         <button type="button" onclick="agregarOtroMotivo()"
                                 style="background:#1a73e8; color:white; border:none; border-radius:8px;
-                                       padding:0 16px; height:45px; font-weight:bold; font-size:24px; cursor:pointer;">+</button>
+                                       padding:0 16px; height:46px; font-weight:900; font-size:22px; cursor:pointer;
+                                       transition:all 0.2s; flex-shrink:0;">+</button>
                     </div>
                     <input type="hidden" id="otroMotivo" value="">
                 </div>
 
-                <div class="card">
-                    <h3>¿Necesita reparación?</h3>
-                    <label class="reparacion-label">
-                        <input type="radio" name="reparacion" value="Si"> Sí
-                    </label>
-                    <label class="reparacion-label">
-                        <input type="radio" name="reparacion" value="No" checked> No
-                    </label>
+                <!-- ─── PASO 4: REPARACIÓN / TAPIZADO ─── -->
+                <div class="card" id="card-reparacion" style="margin-bottom:18px;">
+                    <h3>🔩 ¿Necesita Reparación?</h3>
+                    <div class="rep-opciones">
+                        <button type="button" class="rep-card" id="rep-si"
+                                onclick="seleccionarReparacion('Si')">
+                            <span class="rep-icon">⚠️</span>
+                            Sí, necesita<br>reparación
+                            <input type="radio" name="reparacion" value="Si" style="display:none;">
+                        </button>
+                        <button type="button" class="rep-card seleccionada-no" id="rep-no"
+                                onclick="seleccionarReparacion('No')">
+                            <span class="rep-icon">✅</span>
+                            No, todo<br>en orden
+                            <input type="radio" name="reparacion" value="No" checked style="display:none;">
+                        </button>
+                    </div>
+
+                    <!-- Tapizado (se muestra si Sí) -->
                     <div id="box-tapizado" style="display:none; margin-top:14px; padding-top:14px; border-top:1px dashed #dadce0;">
-                        <h3 style="color:#1a73e8;">¿Necesita tapizado?</h3>
-                        <label class="reparacion-label">
-                            <input type="radio" name="tapizado" value="Si"> Sí
-                        </label>
-                        <label class="reparacion-label">
-                            <input type="radio" name="tapizado" value="No" checked> No
-                        </label>
+                        <h3 style="color:#f59e0b;">🪡 ¿Necesita Tapizado?</h3>
+                        <div class="tap-opciones">
+                            <button type="button" class="tap-card" id="tap-si"
+                                    onclick="seleccionarTapizado('Si')">
+                                🪡 Sí, tapizado
+                                <input type="radio" name="tapizado" value="Si" style="display:none;">
+                            </button>
+                            <button type="button" class="tap-card activo" id="tap-no"
+                                    onclick="seleccionarTapizado('No')">
+                                ✅ No necesita
+                                <input type="radio" name="tapizado" value="No" checked style="display:none;">
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card" id="card-archivo">
-                    <h3>📸 Fotos de Remito / Visita</h3>
+                <!-- ─── PASO 5: FOTOS ─── -->
+                <div class="card" id="card-archivo" style="margin-bottom:18px;">
+                    <h3>📸 Fotos / Remito</h3>
                     <input type="file" id="archivo-oculto" multiple accept="image/*,.pdf" style="display:none;">
+
+                    <!-- Zona de drop / botón -->
                     <button type="button" class="btn-archivo"
-                            onclick="document.getElementById('archivo-oculto').click()">
+                            onclick="document.getElementById('archivo-oculto').click()"
+                            id="btn-agregar-fotos">
                         📁 Agregar Fotos o Archivos
                     </button>
-                    <div id="lista-archivos" style="margin-top:14px;"></div>
+
+                    <!-- Preview grid -->
+                    <div class="fotos-grid" id="lista-archivos"></div>
                 </div>
 
-                <button type="button" id="btnEnviar" class="btn-submit" onclick="validarYEnviar()">
-                    ✅ Enviar Visita Técnica
+                <!-- BOTÓN ENVIAR -->
+                <button type="button" id="btnEnviar" class="btn-submit" onclick="validarYEnviar()"
+                        style="font-size:17px; padding:18px; border-radius:14px; letter-spacing:-0.3px;">
+                    ✅ Registrar Visita Técnica
                 </button>
 
             </form>
+
             <div id="status" class="status"></div>
         </div>
     </main>
@@ -134,7 +549,7 @@
             <div class="modal-sistema-msg">Hay una nueva versión con mejoras. ¿Querés descargarla ahora?</div>
             <div class="modal-sistema-btns">
                 <button onclick="document.getElementById('modalActualizacion').style.display='none'"
-                        class="btn-modal-secundario">Cancelar</button>
+                        class="btn-modal-secundario">Ahora no</button>
                 <a id="linkDescargaApk" href="#" class="btn-modal-primario">⬇️ Actualizar</a>
             </div>
         </div>
@@ -165,7 +580,7 @@
     <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()" title="Modo Oscuro">🌙</button>
 
     <script>
-        // Indicador online/offline
+        // ── Indicador online/offline ──
         function actualizarDotConexion() {
             const dot = document.getElementById('nav-dot');
             if (dot) dot.classList.toggle('offline', !navigator.onLine);
@@ -174,7 +589,7 @@
         window.addEventListener('offline', actualizarDotConexion);
         actualizarDotConexion();
 
-        // Badge de visitas pendientes de sincronizar
+        // ── Badge pendientes ──
         function actualizarBadgePendientes(cantidad) {
             const badge = document.getElementById('badge-pendientes');
             if (!badge) return;
@@ -182,35 +597,168 @@
             else { badge.classList.remove('visible'); }
         }
 
-        // Auto-guardado del borrador del formulario
-        let autoSaveTimer;
-        function iniciarAutoSave() {
-            clearTimeout(autoSaveTimer);
-            autoSaveTimer = setTimeout(() => {
-                const t = document.getElementById('tecnico')?.value;
-                const g = document.getElementById('otroGimnasio')?.value;
-                const m = document.getElementById('otroMotivo')?.value;
-                if (t || g || m) {
-                    localStorage.setItem('borrador_visita', JSON.stringify({ tecnico: t, otroGim: g, otroMotivo: m }));
-                }
-            }, 2000);
+        // ── Progress steps — máquina de estados limpia ──
+        function actualizarProgress() {
+            const tecnico = (document.getElementById('tecnico')?.value || '').trim();
+            const gym     = (document.getElementById('buscador')?.value || '').trim() ||
+                            (document.getElementById('otroGimnasio')?.value || '').trim();
+            const motivo  = document.querySelectorAll('.motivo:checked').length > 0 ||
+                            (document.getElementById('otroMotivo')?.value || '').trim() !== '';
+            const fotos   = (window.archivosSeleccionados || []).length > 0;
+
+            // Estado de cada paso: 0=inactivo, 1=activo(actual), 2=hecho
+            const pasos = [
+                tecnico ? 2 : 1,                          // paso 1: técnico
+                tecnico ? (gym ? 2 : 1)  : 0,             // paso 2: gimnasio
+                gym     ? (motivo ? 2 : 1) : 0,           // paso 3: motivo
+                motivo  ? (fotos ? 2 : 1) : 0,            // paso 4: fotos
+                (tecnico && gym && motivo) ? 1 : 0,       // paso 5: enviar
+            ];
+
+            pasos.forEach((estado, i) => {
+                const dot  = document.getElementById('step-' + (i + 1));
+                const line = document.getElementById('line-' + (i + 1));
+                if (!dot) return;
+                dot.classList.remove('done', 'active');
+                if (estado === 2) dot.classList.add('done');
+                if (estado === 1) dot.classList.add('active');
+                if (line) { line.classList.toggle('done', estado === 2); }
+            });
         }
 
+        // ── Técnico: guardar rápido ──
+        function guardarTecnicoRapido() {
+            const val = document.getElementById('tecnico').value.trim();
+            if (val) {
+                localStorage.setItem("tecnico", val);
+                document.getElementById('tecnico-saved-hint').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('tecnico-saved-hint').style.display = 'none';
+                }, 2000);
+                mostrarChipTecnico(val);
+            }
+        }
+
+        function mostrarChipTecnico(nombre) {
+            const chip = document.getElementById('chip-tecnico');
+            const cardTec = document.getElementById('card-tecnico');
+            if (!nombre) return;
+            document.getElementById('chip-nombre').innerText = nombre;
+            document.getElementById('chip-avatar').innerText = nombre.charAt(0).toUpperCase();
+            chip.style.display = 'flex';
+            cardTec.style.display = 'none';
+        }
+
+        function editarTecnico() {
+            document.getElementById('chip-tecnico').style.display = 'none';
+            document.getElementById('card-tecnico').style.display = 'block';
+            document.getElementById('tecnico').focus();
+        }
+
+        // ── Reparación visual ──
+        function seleccionarReparacion(val) {
+            const repSi = document.getElementById('rep-si');
+            const repNo = document.getElementById('rep-no');
+            const box = document.getElementById('box-tapizado');
+            if (val === 'Si') {
+                repSi.classList.add('seleccionada-si');
+                repNo.classList.remove('seleccionada-no');
+                repSi.querySelector('input').checked = true;
+                box.style.display = 'block';
+                box.style.animation = 'fadeUp 0.3s ease both';
+            } else {
+                repNo.classList.add('seleccionada-no');
+                repSi.classList.remove('seleccionada-si');
+                repNo.querySelector('input').checked = true;
+                box.style.display = 'none';
+                document.getElementById('tap-no').classList.add('activo');
+                document.getElementById('tap-si').classList.remove('activo');
+                document.querySelector('input[name="tapizado"][value="No"]').checked = true;
+            }
+        }
+
+        function seleccionarTapizado(val) {
+            const tapSi = document.getElementById('tap-si');
+            const tapNo = document.getElementById('tap-no');
+            if (val === 'Si') {
+                tapSi.classList.add('activo');
+                tapNo.classList.remove('activo');
+                tapSi.querySelector('input').checked = true;
+            } else {
+                tapNo.classList.add('activo');
+                tapSi.classList.remove('activo');
+                tapNo.querySelector('input').checked = true;
+            }
+        }
+
+        // ── Toggle motivo rápido ──
+        function toggleMotivoRapido(btn) {
+            const estaActivo = btn.classList.contains('seleccionado');
+            btn.classList.toggle('seleccionado');
+            const chk = btn.querySelector('input[type="checkbox"]');
+            if (chk) chk.checked = !estaActivo;
+            actualizarProgress();
+        }
+
+        // ── Foto preview ──
         document.addEventListener('DOMContentLoaded', () => {
-            // Restaurar borrador si existe
+            // Restaurar borrador
             try {
                 const b = JSON.parse(localStorage.getItem('borrador_visita') || 'null');
                 if (b) {
-                    if (b.tecnico   && !document.getElementById('tecnico').value)
+                    if (b.tecnico && !document.getElementById('tecnico').value)
                         document.getElementById('tecnico').value = b.tecnico;
-                    if (b.otroGim)   document.getElementById('otroGimnasio').value = b.otroGim;
-                    if (b.otroMotivo) document.getElementById('otroMotivo').value  = b.otroMotivo;
+                    if (b.otroGim) document.getElementById('otroGimnasio').value = b.otroGim;
+                    if (b.otroMotivo) document.getElementById('otroMotivo').value = b.otroMotivo;
                 }
             } catch(e) {}
-            ['tecnico','otroGimnasio','otroMotivo'].forEach(id => {
-                document.getElementById(id)?.addEventListener('input', iniciarAutoSave);
-            });
+
+            // Mostrar chip si hay técnico guardado
+            const savedTec = localStorage.getItem("tecnico");
+            if (savedTec) {
+                document.getElementById('tecnico').value = savedTec;
+                mostrarChipTecnico(savedTec);
+            }
+
+            actualizarProgress();
         });
+
+        // ── Foto preview handler (reemplaza renderizarArchivos en app.js) ──
+        window._renderizarFotos = function(archivos) {
+            const grid = document.getElementById('lista-archivos');
+            if (!grid) return;
+            grid.innerHTML = '';
+            archivos.forEach((archivo, i) => {
+                if (archivo.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const div = document.createElement('div');
+                        div.className = 'foto-thumb';
+                        div.innerHTML = `
+                            <img src="${e.target.result}" alt="${archivo.name}">
+                            <button class="foto-del" onclick="eliminarArchivo(${i})" title="Quitar">✕</button>
+                        `;
+                        grid.appendChild(div);
+                    };
+                    reader.readAsDataURL(archivo);
+                } else {
+                    // PDF u otro
+                    const div = document.createElement('div');
+                    div.className = 'foto-pdf';
+                    div.innerHTML = `<span class="pdf-icon">📄</span><span>${archivo.name.slice(0,14)}</span>`;
+                    div.onclick = () => eliminarArchivo(i);
+                    div.title = 'Tocar para quitar: ' + archivo.name;
+                    grid.appendChild(div);
+                }
+            });
+            // Mostrar count en botón
+            const btnFotos = document.getElementById('btn-agregar-fotos');
+            if (btnFotos) {
+                btnFotos.innerText = archivos.length > 0
+                    ? `📸 ${archivos.length} foto(s) — agregar más`
+                    : '📁 Agregar Fotos o Archivos';
+            }
+        };
     </script>
 </body>
 </html>

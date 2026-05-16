@@ -394,43 +394,45 @@ function toggleBurbujaPrecios() {
 function renderizarBurbujaPrecios() {
     const contenedor = document.getElementById('burbuja-precios-contenido');
     const labelDolar = document.getElementById('burbuja-dolar-label');
+    const tituloBurbuja = document.getElementById('burbuja-titulo');
     if (!contenedor) return;
 
-    const tasaDolar = valorDolarOficial; // Ya está garantizado ser el valor real
+    const tasaDolar = valorDolarOficial;
     if (labelDolar) {
-        labelDolar.innerText = `💱 USD Oficial: $${tasaDolar.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+        labelDolar.innerText = modoApp === 'presupuestos'
+            ? `💱 USD Oficial: $${tasaDolar.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+            : '';
+    }
+    if (tituloBurbuja) {
+        tituloBurbuja.innerText = modoApp === 'ofertas' ? '🛠️ Precios de Mantenimiento' : '📋 Lista de Precios';
     }
 
     const precios = modoApp === 'presupuestos' ? PRECIOS_PRESUPUESTOS : PRECIOS_OFERTAS;
 
     let html = '';
-    let alternado = false;
     Object.entries(precios).forEach(([nombre, info]) => {
         const esUSD = info.moneda === 'USD';
         const precioARS = esUSD ? Math.round(info.precio * tasaDolar) : info.precio;
         const precioConIVA = Math.round(precioARS * 1.21);
-        const fondo = alternado ? 'rgba(26,115,232,0.04)' : 'white';
+
+        const badgeUSD = esUSD
+            ? `<span class="precio-badge-usd">U$D ${info.precio}</span>`
+            : `<span style="font-size:11px; color:var(--inf-muted);">ARS</span>`;
 
         html += `
-        <div style="display:grid; grid-template-columns:1fr auto auto auto; align-items:center; 
-                    gap:8px; padding:10px 16px; background:${fondo}; border-bottom:1px solid #f1f3f4;">
-            <div style="font-size:13px; font-weight:600; color:#3c4043; line-height:1.3;">${nombre}</div>
-            ${esUSD 
-                ? `<div style="font-size:11px; font-weight:bold; color:#7b1fa2; background:#f3e5f5; padding:2px 7px; border-radius:12px; white-space:nowrap;">U$D ${info.precio}</div>` 
-                : `<div style="font-size:11px; color:#5f6368; padding:2px 7px;">ARS</div>`}
-            <div style="font-size:13px; font-weight:700; color:#1a73e8; white-space:nowrap; text-align:right;">
-                $${precioARS.toLocaleString('es-AR')}
-            </div>
-            <div style="font-size:11px; color:#5f6368; white-space:nowrap; text-align:right;" title="Con IVA 21%">
-                +IVA: $${precioConIVA.toLocaleString('es-AR')}
-            </div>
+        <div class="precio-row">
+            <span class="precio-nombre">${nombre}</span>
+            ${badgeUSD}
+            <span class="precio-valor">$${precioARS.toLocaleString('es-AR')}</span>
+            ${modoApp === 'presupuestos' ? `<span class="precio-iva">+IVA: $${precioConIVA.toLocaleString('es-AR')}</span>` : ''}
         </div>`;
-        alternado = !alternado;
     });
 
-    html += `<div style="padding:10px 16px; background:#f8f9fa; font-size:11px; color:#5f6368; text-align:center; font-style:italic;">
-        Los precios en USD se calculan al tipo de cambio oficial del día.
-    </div>`;
+    if (modoApp === 'presupuestos') {
+        html += `<div style="padding:10px 16px; font-size:11px; color:var(--inf-muted); text-align:center; font-style:italic; border-top:1px solid var(--inf-border);">
+            Los precios en USD se calculan al tipo de cambio oficial del día.
+        </div>`;
+    }
 
     contenedor.innerHTML = html;
 }
@@ -541,119 +543,107 @@ function formatearFechaManual(e) {
     }
 }
 
-// 🔥 1. ACTUALIZADO: Ocultar barras innecesarias en Abonos 🔥
 function setModoApp(modo) {
     modoApp = modo;
     
     const msjInicial = document.getElementById('mensaje-inicial');
     if(msjInicial) msjInicial.style.display = 'none';
-    
     const areaTrabajo = document.getElementById('area-trabajo');
     if(areaTrabajo) areaTrabajo.style.display = 'block';
 
-    document.getElementById('btn-modo-ofertas').style.background = modo === 'ofertas' ? '#1a73e8' : 'transparent';
-    document.getElementById('btn-modo-ofertas').style.color = modo === 'ofertas' ? 'white' : '#5f6368';
-    document.getElementById('btn-modo-ofertas').style.border = modo === 'ofertas' ? 'none' : '1.5px solid #dadce0';
-    
-    document.getElementById('btn-modo-presupuestos').style.background = modo === 'presupuestos' ? '#1a73e8' : 'transparent';
-    document.getElementById('btn-modo-presupuestos').style.color = modo === 'presupuestos' ? 'white' : '#5f6368';
-    document.getElementById('btn-modo-presupuestos').style.border = modo === 'presupuestos' ? 'none' : '1.5px solid #dadce0';
+    // Actualizar tabs con nueva clase
+    ['ofertas','presupuestos','abonos'].forEach(m => {
+        const btn = document.getElementById('btn-modo-' + m);
+        if (!btn) return;
+        btn.classList.toggle('activo', m === modo);
+    });
 
-    const btnAbonos = document.getElementById('btn-modo-abonos');
-    if(btnAbonos) {
-        btnAbonos.style.background = modo === 'abonos' ? '#1a73e8' : 'transparent';
-        btnAbonos.style.color = modo === 'abonos' ? 'white' : '#5f6368';
-        btnAbonos.style.border = modo === 'abonos' ? 'none' : '1.5px solid #dadce0';
-    }
-
-    // 🔥 Mostrar indicador del dólar SIEMPRE en modo presupuestos 🔥
-    const domDolar = document.getElementById('valor-dolar');
-    if (domDolar) {
-        domDolar.style.display = modo === 'presupuestos' ? 'inline-block' : 'none';
-    }
-
-    // 🔥 Mostrar botón de lista de precios solo en modo presupuestos 🔥
-    const btnPrecios = document.getElementById('btn-ver-precios');
-    if (btnPrecios) {
-        btnPrecios.style.display = modo === 'presupuestos' ? 'inline-block' : 'none';
-        // Cerrar burbuja al cambiar de modo
-        const burbuja = document.getElementById('burbuja-precios');
-        if (burbuja) burbuja.style.display = 'none';
-        btnPrecios.innerText = '📋 Ver Lista de Precios';
-        btnPrecios.style.background = '#e8f0fe';
-        btnPrecios.style.color = '#1a73e8';
-    }
-
-    // Ocultar los botones grises si estamos en Abonos
-    const contenedorTabsGrises = document.getElementById('tab-crear').parentElement;
-    if (contenedorTabsGrises) {
-        contenedorTabsGrises.style.display = modo === 'abonos' ? 'none' : 'flex';
-    }
+    // Abonos: mostrar/ocultar sección
+    const secAbonos = document.getElementById('seccion-abonos');
+    if (secAbonos) secAbonos.style.display = modo === 'abonos' ? 'block' : 'none';
+    if (areaTrabajo) areaTrabajo.style.display = modo === 'abonos' ? 'none' : 'block';
+    if (msjInicial)  msjInicial.style.display  = modo === 'abonos' ? 'none' : 'none';
 
     if (modo === 'abonos') {
-        document.getElementById('seccion-crear').style.display = 'none';
-        document.getElementById('seccion-creados').style.display = 'none';
-        
-        const arcaCont = document.getElementById('arca-container');
-        if(arcaCont) arcaCont.style.display = 'none';
-        
-        document.getElementById('seccion-abonos').style.display = 'block';
-        renderizarAbonos(); 
-        
-    } else {
-        document.getElementById('seccion-abonos').style.display = 'none';
-        
-        document.getElementById('seccion-crear').style.display = (document.getElementById('tab-crear').style.background === 'rgb(26, 115, 232)') ? 'block' : 'none';
-        document.getElementById('seccion-creados').style.display = (document.getElementById('tab-creados').style.background === 'rgb(26, 115, 232)') ? 'block' : 'none';
-        
-        const arcaCont = document.getElementById('arca-container');
-        if (arcaCont) {
-            arcaCont.style.display = (modo === 'presupuestos' && document.getElementById('tab-creados').style.background === 'rgb(26, 115, 232)') ? 'block' : 'none';
-        }
-
-        const tituloForm = document.getElementById('titulo-form');
-        if(tituloForm) tituloForm.innerText = modo === 'ofertas' ? "📄 Nueva Oferta" : "📄 Nuevo Presupuesto";
-
-        const contFrec = document.getElementById('container-frecuencia');
-        if(contFrec) contFrec.style.display = modo === 'ofertas' ? 'block' : 'none';
-        
-        const contFecha = document.getElementById('container-fecha');
-        if(contFecha) contFecha.style.display = modo === 'presupuestos' ? 'block' : 'none';
-
-        const seccionCreados = document.getElementById('seccion-creados');
-        if (seccionCreados && seccionCreados.style.display !== 'none') {
-            obtenerYRenderizarCreados();
-        } else {
-            const gymInput = document.getElementById('input-gym');
-            if (gymInput) gymInput.value = '';
-            const listaD = document.getElementById('lista-maquinas-dom');
-            if(listaD) listaD.innerHTML = '';
-            
-            agregarItem();
-            calcularTotal();
-        }
+        const hoy = new Date();
+        const mm  = String(hoy.getMonth() + 1).padStart(2,'0');
+        const yyyy = String(hoy.getFullYear());
+        const sel = document.getElementById('selector-mes-abono');
+        if (sel && !sel.value) sel.value = `${yyyy}-${mm}`;
+        cargarAbonos();
+        return;
     }
+
+    // Dólar: solo en presupuestos (los precios de ofertas son en ARS fijos)
+    const domDolar = document.getElementById('valor-dolar');
+    if (domDolar) domDolar.style.display = modo === 'presupuestos' ? 'inline-block' : 'none';
+
+    // Botón lista precios: SIEMPRE visible (tanto en ofertas como presupuestos)
+    const btnPrecios = document.getElementById('btn-ver-precios');
+    if (btnPrecios) {
+        btnPrecios.style.display = 'inline-block';
+        const burbuja = document.getElementById('burbuja-precios');
+        if (burbuja) burbuja.style.display = 'none';
+        btnPrecios.innerText = modo === 'ofertas' ? '📋 Precios Mantenimiento' : '📋 Lista de Precios';
+        btnPrecios.style.background = modo === 'ofertas' ? '#e6f4ea' : '#e8f0fe';
+        btnPrecios.style.color      = modo === 'ofertas' ? '#0f9d58' : '#1a73e8';
+    }
+
+    // ARCA solo en presupuestos
+    const arcaC = document.getElementById('arca-container');
+    if (arcaC) arcaC.style.display = modo === 'presupuestos' ? 'block' : 'none';
+
+    // Título y descripción de la sección guardados
+    const tit = document.getElementById('titulo-guardados');
+    const desc = document.getElementById('desc-guardados');
+    const titForm = document.getElementById('titulo-form');
+    if (modo === 'ofertas') {
+        if (tit) tit.innerText = '📁 Ofertas Guardadas';
+        if (desc) desc.innerText = 'Lista de ofertas de mantenimiento.';
+        if (titForm) titForm.innerText = '🛠️ Nueva Oferta';
+    } else {
+        if (tit) tit.innerText = '📁 Presupuestos Guardados';
+        if (desc) desc.innerText = 'Facturas y presupuestos en la nube.';
+        if (titForm) titForm.innerText = '💰 Nuevo Presupuesto';
+    }
+
+    // Mostrar/ocultar campos según modo
+    const contFecha = document.getElementById('container-fecha');
+    const contFrec  = document.getElementById('container-frecuencia');
+    if (contFecha) contFecha.style.display = modo === 'presupuestos' ? 'block' : 'none';
+    if (contFrec)  contFrec.style.display  = modo === 'presupuestos' ? 'none'  : 'block';
+    const labelGym = document.getElementById('label-gym');
+    if (labelGym) labelGym.innerText = modo === 'presupuestos' ? 'Gimnasio / Cliente *' : 'Gimnasio *';
+
+    switchTab('crear');
+    limpiarFormulario();
+    agregarItem();
 }
 
 function switchTab(tab) {
     tabActivo = tab;
-    if(tab === 'crear') {
-        document.getElementById('seccion-crear').style.display = 'block';
-        document.getElementById('seccion-creados').style.display = 'none';
-        document.getElementById('tab-crear').style.background = '#1a73e8';
-        document.getElementById('tab-creados').style.background = '#5f6368';
-        const arcaCont = document.getElementById('arca-container');
-        if(arcaCont) arcaCont.style.display = 'none';
+    const crear   = document.getElementById('seccion-crear');
+    const creados = document.getElementById('seccion-creados');
+    const arcaCont = document.getElementById('arca-container');
+    const tabC = document.getElementById('tab-crear');
+    const tabG = document.getElementById('tab-creados');
+
+    if (tab === 'crear') {
+        if (crear)   crear.style.display   = 'block';
+        if (creados) creados.style.display  = 'none';
+        if (tabC) { tabC.classList.add('activo'); }
+        if (tabG) { tabG.classList.remove('activo'); }
+        if (arcaCont) arcaCont.style.display = 'none';
     } else {
-        document.getElementById('seccion-crear').style.display = 'none';
-        document.getElementById('seccion-creados').style.display = 'block';
-        document.getElementById('tab-crear').style.background = '#5f6368';
-        document.getElementById('tab-creados').style.background = '#1a73e8';
-        const arcaCont = document.getElementById('arca-container');
-        if(arcaCont) arcaCont.style.display = modoApp === 'presupuestos' ? 'block' : 'none';
-        obtenerYRenderizarCreados(); 
+        if (crear)   crear.style.display   = 'none';
+        if (creados) creados.style.display  = 'block';
+        if (tabC) { tabC.classList.remove('activo'); }
+        if (tabG) { tabG.classList.add('activo'); }
+        if (arcaCont) arcaCont.style.display = modoApp === 'presupuestos' ? 'block' : 'none';
+        obtenerYRenderizarCreados();
     }
 }
+
 
 // Recibe metros y terminales para el armado del HTML
 function agregarItem(tipoBase = "", desc = "", cant = 1, precioForzado = null, metros = 1, terminales = 2) {
@@ -1133,7 +1123,7 @@ function renderizarTarjetas() {
         return new Date(yb, mb-1, db) - new Date(ya, ma-1, da);
     });
 
-    // 5. DIBUJAR LA BOTONERA DE MESES (usando los chips del nuevo HTML)
+    // 5. CHIPS DE MES (meses-scroll con clase mes-chip)
     const mesesScrollEl = document.getElementById('meses-scroll');
     if (mesesScrollEl) {
         let chipsHTML = `<button class="mes-chip ${filtroMesActual==='Todos'?'activo':''}" onclick="setFiltroMes('Todos')">Ver todos</button>`;
@@ -1143,113 +1133,115 @@ function renderizarTarjetas() {
         mesesScrollEl.innerHTML = chipsHTML;
     }
 
-    // Actualizar estilos de botones de estado
-    ['pendiente','pagado','todos'].forEach(k => {
+    // Botones filtro estado con colores
+    const filtroMap = { pendiente:'Pendiente', pagado:'Pagado', todos:'Todos' };
+    Object.entries(filtroMap).forEach(([k, v]) => {
         const btn = document.getElementById('filtro-' + k);
         if (!btn) return;
-        const isActive = (k === 'pendiente' && filtroPagoActual === 'Pendiente') ||
-                         (k === 'pagado'    && filtroPagoActual === 'Pagado') ||
-                         (k === 'todos'     && filtroPagoActual === 'Todos');
-        btn.style.background = isActive ? (k==='pendiente'?'#fce8e6':k==='pagado'?'#e6f4ea':'#e8f0fe') : '#f1f3f4';
-        btn.style.color      = isActive ? (k==='pendiente'?'#d93025':k==='pagado'?'#0f9d58':'#1a73e8') : '#5f6368';
+        const isActive = filtroPagoActual === v;
+        const colors = {
+            pendiente: { bg: isActive ? '#fce8e6' : '#f4f6f9', col: isActive ? '#d93025' : '#5f6368' },
+            pagado:    { bg: isActive ? '#e6f4ea' : '#f4f6f9', col: isActive ? '#0f9d58' : '#5f6368' },
+            todos:     { bg: isActive ? '#e8f0fe' : '#f4f6f9', col: isActive ? '#1a73e8' : '#5f6368' },
+        };
+        btn.style.background = colors[k].bg;
+        btn.style.color      = colors[k].col;
+        btn.style.boxShadow  = isActive ? '0 2px 8px rgba(0,0,0,0.12)' : 'none';
     });
 
-    // 6. DIBUJAR LAS TARJETAS DE LOS DOCUMENTOS
+    // 6. TARJETAS CON NUEVO DISEÑO
     if (finales.length === 0) {
-        contenedor.innerHTML += '<p style="text-align:center; color:#999; margin-top:30px;">No hay documentos en esta categoría.</p>';
+        contenedor.innerHTML = `<div style="text-align:center; padding:40px 20px; color:#9aa0a6;">
+            <div style="font-size:36px; margin-bottom:10px;">🗂️</div>
+            <div style="font-weight:700; font-size:15px;">No hay documentos en esta categoría</div>
+        </div>`;
         return;
     }
 
     finales.forEach((doc, animIdx) => {
-        const estadoReal  = doc.estado || "Pendiente";
-        const esPagado    = doc.pagado === "Pagado";
-        const colorEstado = estadoReal === "Facturado / Aprobado" ? "#34a853" : estadoReal === "Enviado" ? "#1a73e8" : "#fbbc04";
-        const colorPagado = esPagado ? "#0f9d58" : "#d93025";
-        const bgPagado    = esPagado ? "#e6f4ea" : "#fce8e6";
+        const estadoReal = doc.estado || "Pendiente";
+        const esPagado   = doc.pagado === "Pagado";
+        const colorEst   = estadoReal === "Facturado / Aprobado" ? "#34a853" : estadoReal === "Enviado" ? "#1a73e8" : "#fbbc04";
+        const colorPag   = esPagado ? "#0f9d58" : "#d93025";
+        const bgPag      = esPagado ? "#e6f4ea" : "#fce8e6";
 
-        // Badges
         const badgeCuit = doc.cuit
-            ? `<span style="background:#f1f3f4; color:#5f6368; padding:3px 8px; border-radius:6px; font-size:11px; border:1px solid #ddd; font-weight:700;">${doc.cuit}</span>`
-            : "";
+            ? `<span style="background:#f1f3f4; color:#5f6368; padding:2px 8px; border-radius:8px; font-size:11px; font-weight:700; border:1px solid #e0e0e0; margin-right:4px;">${doc.cuit}</span>`
+            : '';
+        let factStr = String(doc.numFactura || '');
+        let displayFact = factStr.startsWith("NC ") ? `🔄 NC ${factStr.replace("NC ","")}` : factStr.includes("-") ? `📄 Factura ${factStr}` : factStr ? `📄 ${factStr}` : '';
+        const badgeFact = displayFact ? `<span class="badge-fact">${displayFact}</span>` : '';
 
-        let factStr = String(doc.numFactura || "");
-        let displayFactura = factStr.startsWith("NC ") ? `📄 NC ${factStr.replace("NC ","")}` : factStr.includes("-") ? `📄 Factura ${factStr}` : factStr ? `📄 ${factStr}` : "";
-        const badgeFactura = displayFactura
-            ? `<span class="doc-badge-factura">${displayFactura}</span>`
-            : "";
-
-        let maquinasHTML = "";
+        let maquinasHTML = '';
         if (doc.items && Array.isArray(doc.items)) {
-            maquinasHTML = doc.items.map(m => {
-                let extra = (m.metros && m.terminales) ? `<br><span style="color:#0f9d58;font-size:11px;">(🔧 ${m.metros}mts / ${m.terminales} term.)</span>` : "";
-                return `<li style="margin-bottom:5px;"><b>${m.cant}x ${m.desc||'Sin Marca'}</b> — ${m.tipo} <span style="color:#d93025;font-size:11px;">($${m.precio?m.precio.toLocaleString('es-AR'):'0'} c/u)</span>${extra}</li>`;
-            }).join('');
+            maquinasHTML = `<ul style="margin:0 0 10px; padding-left:18px; font-size:13px; color:#475467; line-height:1.7;">` +
+                doc.items.map(m => {
+                    let extra = (m.metros && m.terminales) ? ` <span style="color:#0f9d58; font-size:11px;">(${m.metros}m / ${m.terminales} term.)</span>` : '';
+                    return `<li><b>${m.cant}x ${m.desc||'—'}</b> — ${m.tipo} <span style="color:#d93025; font-size:11px;">($${(m.precio||0).toLocaleString('es-AR')} c/u)</span>${extra}</li>`;
+                }).join('') + `</ul>`;
         }
 
-        const selectEstadoHTML = modoApp === 'presupuestos' ? `
-            <div>
-                <label style="font-size:11px;font-weight:800;color:#555;text-transform:uppercase;letter-spacing:0.4px;">Estado Operativo:</label>
-                <select onchange="cambiarEstado(${doc.id}, this.value, 'estado')"
-                        style="width:100%; padding:9px; border-radius:8px; border:1px solid ${colorEstado}; font-weight:700; color:${colorEstado}; outline:none; margin-top:4px;">
-                    <option value="Pendiente"           ${estadoReal==='Pendiente'?'selected':''}>Pendiente</option>
-                    <option value="Enviado"             ${estadoReal==='Enviado'?'selected':''}>Enviado al Cliente</option>
-                    <option value="Facturado / Aprobado" ${estadoReal==='Facturado / Aprobado'?'selected':''}>Facturado / Aprobado</option>
-                </select>
-            </div>
-            <div>
-                <label style="font-size:11px;font-weight:800;color:#555;text-transform:uppercase;letter-spacing:0.4px;">Estado de Pago:</label>
-                <select onchange="cambiarEstado(${doc.id}, this.value, 'pagado')"
-                        style="width:100%; padding:9px; border-radius:8px; border:1px solid ${colorPagado}; font-weight:700; color:${colorPagado}; background:${bgPagado}; outline:none; margin-top:4px;">
-                    <option value="Pendiente" ${doc.pagado==='Pendiente'?'selected':''}>Pendiente</option>
-                    <option value="Pagado"    ${doc.pagado==='Pagado'?'selected':''}>Pagado</option>
-                </select>
-            </div>
-        ` : '';
+        const selectsHTML = modoApp === 'presupuestos' ? `
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#5f6368; margin-bottom:4px;">Estado Operativo</div>
+                    <select onchange="cambiarEstado(${doc.id}, this.value, 'estado')"
+                            style="width:100%; padding:9px; border-radius:8px; border:1.5px solid ${colorEst}; font-weight:700; color:${colorEst}; outline:none; background:white;">
+                        <option value="Pendiente"            ${estadoReal==='Pendiente'?'selected':''}>Pendiente</option>
+                        <option value="Enviado"              ${estadoReal==='Enviado'?'selected':''}>Enviado</option>
+                        <option value="Facturado / Aprobado" ${estadoReal==='Facturado / Aprobado'?'selected':''}>Facturado / Aprobado</option>
+                    </select>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#5f6368; margin-bottom:4px;">Estado de Pago</div>
+                    <select onchange="cambiarEstado(${doc.id}, this.value, 'pagado')"
+                            style="width:100%; padding:9px; border-radius:8px; border:1.5px solid ${colorPag}; font-weight:700; color:${colorPag}; background:${bgPag}; outline:none;">
+                        <option value="Pendiente" ${doc.pagado==='Pendiente'?'selected':''}>Pendiente</option>
+                        <option value="Pagado"    ${doc.pagado==='Pagado'?'selected':''}>Pagado</option>
+                    </select>
+                </div>
+            </div>` : '';
 
         const div = document.createElement('div');
-        div.className = `doc-card-v2 ${esPagado?'pagado':'pendiente'}`;
-        div.style.animationDelay = (animIdx * 0.04) + 's';
-        if (modoApp !== 'presupuestos') div.style.borderLeft = `4px solid ${colorEstado}`;
+        div.className = `doc-card-v3 ${esPagado?'pagado':'pendiente'}`;
+        div.style.animationDelay = (animIdx * 0.035) + 's';
 
         div.innerHTML = `
-            <div class="doc-header-v2" onclick="
+            <div class="doc-header-v3" onclick="
                 const body = this.nextElementSibling;
-                const open  = body.classList.toggle('abierto');
-                this.querySelector('.arrow-icon').innerText = open ? '▲' : '▼';
+                const open = body.classList.toggle('abierto');
+                this.querySelector('.arrow').innerText = open ? '▲' : '▼';
             ">
                 <div style="flex:1; min-width:0;">
-                    <div class="doc-gym-v2" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        ${doc.cliente}
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px;">
+                        <span class="doc-gym-v3">${doc.cliente}</span>
                         ${badgeCuit}
-                        ${badgeFactura}
+                        ${badgeFact}
                     </div>
-                    <div class="doc-meta-v2">${doc.fechaLimpia} &nbsp;|&nbsp; Total: <b style="color:#1a73e8;">$${Number(doc.total).toLocaleString('es-AR')}</b></div>
+                    <div class="doc-meta-v3">
+                        ${doc.fechaLimpia}
+                        &nbsp;·&nbsp;
+                        Total: <strong style="color:#1a73e8;">$${Number(doc.total).toLocaleString('es-AR')}</strong>
+                    </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-                    ${modoApp==='presupuestos' ? `<span class="doc-badge-estado ${esPagado?'pagado':'pendiente'}">${doc.pagado}</span>` : ''}
-                    <span class="arrow-icon" style="font-size:14px; color:#1a73e8;">▼</span>
+                    ${modoApp==='presupuestos' ? `<span class="badge-estado ${esPagado?'pagado':'pendiente'}">${doc.pagado}</span>` : ''}
+                    <span class="arrow" style="font-size:13px; color:#1a73e8; font-weight:800;">▼</span>
                 </div>
             </div>
-            <div class="doc-expand-v2">
-                ${maquinasHTML ? `<ul style="margin:0 0 14px; padding-left:20px; font-size:13px; color:#444; line-height:1.7;">${maquinasHTML}</ul>` : ''}
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
-                    ${selectEstadoHTML}
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <button onclick="editarDocumento(${doc.id})"
-                            style="flex:1; background:#e8f0fe; color:#1a73e8; border:1.5px solid #1a73e8; padding:9px; border-radius:8px; font-weight:800; cursor:pointer; transition:0.2s;">
-                        ✏️ Editar
-                    </button>
-                    <button onclick="eliminarDocumento(${doc.id})"
-                            style="flex:1; background:#fce8e6; color:#d93025; border:1.5px solid #d93025; padding:9px; border-radius:8px; font-weight:800; cursor:pointer; transition:0.2s;">
-                        🗑️ Eliminar
-                    </button>
+            <div class="doc-expand-v3">
+                ${maquinasHTML}
+                ${selectsHTML}
+                <div class="doc-actions">
+                    <button class="btn-doc-edit" onclick="editarDocumento(${doc.id})">✏️ Editar</button>
+                    <button class="btn-doc-del"  onclick="eliminarDocumento(${doc.id})">🗑️ Eliminar</button>
                 </div>
             </div>
         `;
         contenedor.appendChild(div);
     });
 }
+
 // 🔥 NUEVO CAMBIO DE ESTADO (Para Múltiples Selects) 🔥
 // Variable para recordar qué presupuesto estamos intentando facturar
 let tempDocParaFactura = null;
@@ -1774,8 +1766,7 @@ function renderizarAbonos() {
     ['facturar', 'enviar', 'completado'].forEach(s => {
         const btn = document.getElementById(`tab-sec-${s}`);
         if(btn) {
-            btn.style.background = (sectorAbonoActual === s) ? tabs[s] : '#f1f3f4';
-            btn.style.color = (sectorAbonoActual === s) ? text[s] : '#5f6368';
+            btn.classList.toggle('activo-sector', sectorAbonoActual === s);
         }
     });
  
@@ -1886,66 +1877,65 @@ function renderizarAbonos() {
             </button>` : '';
  
         const div = document.createElement('div');
-        div.className = "card";
-        div.style.cssText = "padding:15px; margin-bottom:10px; border-left:6px solid " +
-            (sectorAbonoActual === 'facturar' ? '#d93025' : (sectorAbonoActual === 'enviar' ? '#1a73e8' : '#34a853'));
- 
-        div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:start;">
-                <div>
-                    <span style="font-size:11px; color:#999;">ORDEN #${a.orden}</span>
-                    <h4 style="margin:2px 0; font-size:15px;">${a.gym} ${badgeFrecuencia}</h4>
-                    <p style="margin:0; font-size:13px; color:#5f6368;">
-                        CUIT: <span onclick="copiarAlPortapapeles('${cuitSinGuiones}', 'CUIT copiado: ${cuitSinGuiones}')" style="cursor:pointer; color:#1a73e8; font-weight:bold; background:#e8f0fe; padding:2px 6px; border-radius:4px;" title="Tocar para copiar sin guiones">📋 ${a.cuit}</span>
-                    </p>
-                    <div style="margin-top: 5px;">
-                        ${htmlPrecio}
-                    </div>
-                    ${sectorAbonoActual !== 'completado' ? btnHistorialPrecios : ''}
-                    ${sectorAbonoActual === 'facturar' ? `
-                        <button onclick="copiarAlPortapapeles('${textoMantenimiento}', 'Detalle de Factura copiado')" style="margin-top:12px; background:#f1f3f4; color:#5f6368; border:1px solid #ccc; border-radius:4px; font-size:11px; padding:4px 8px; font-weight:bold; cursor:pointer; display:block;">
-                            📋 Copiar Detalle Factura
-                        </button>
-                    ` : ''}
-                </div>
-                <div style="text-align:right;">${alertasTopHTML}</div>
-            </div>
- 
-            <div style="margin-top:15px; display:flex; gap:10px;">
-                ${sectorAbonoActual === 'facturar' ? `
-                    <input type="text" placeholder="Nº Factura..." id="inp-fact-${a.orden}"
-                           onkeypress="if(event.key === 'Enter') guardarFacturaAbono(${a.orden}, '${idMes}')"
-                           style="flex:1; padding:8px; border-radius:6px; border:1.5px solid #ddd; outline:none; font-weight:bold;">
-                    <button onclick="guardarFacturaAbono(${a.orden}, '${idMes}')" style="background:#1a73e8; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;">💾 Facturar</button>
-                ` : sectorAbonoActual === 'enviar' ? `
-                    <div style="flex:1; display:flex; flex-direction:column;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
-                            <span style="color:#1a73e8; font-weight:bold; font-size:13px;">Factura N°: ${fNro}</span>
-                            <button onclick="revertirAFacturar(${a.orden}, '${idMes}')" style="background:white; color:#d93025; border:1px solid #d93025; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer;">✏️ Editar N°</button>
-                        </div>
-                        ${alertasEnvioHTML}
-                        ${botonIpcEnvio}
-                        
-                        <div style="flex:1; display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">
-                            <label style="font-size:11px; font-weight:bold; color:#5f6368;">📧 Correos del cliente:</label>
-                            <textarea id="txt-mail-${a.orden}" style="width:100%; font-size:12px; padding:8px; border:2px solid #fbbc04; border-radius:6px; outline:none; font-family:monospace; resize:vertical; min-height:40px;" rows="2">${correosFormateados}</textarea>
-                        </div>
+        div.className = "abono-card";
+        const accentColor = sectorAbonoActual === 'facturar' ? '#d93025' : sectorAbonoActual === 'enviar' ? '#1a73e8' : '#0f9d58';
+        div.style.borderLeft = `4px solid ${accentColor}`;
 
-                        <div style="display:flex; gap:8px; width:100%;">
-                            <button onclick="copiarAlPortapapeles(document.getElementById('txt-mail-${a.orden}').value, 'Mails copiados al portapapeles')" style="flex:1; background:#fbbc04; color:#333; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">
-                                📋 Copiar Mails
-                            </button>
-                            <button onclick="marcarComoEnviado(${a.orden}, '${idMes}')" style="flex:1; background:#0f9d58; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">
-                                ✅ Marcar Enviado
-                            </button>
-                        </div>
+        div.innerHTML = `
+            <div class="abono-card-header">
+                <div style="display:flex; justify-content:space-between; align-items:start;">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:10px; color:#9aa0a6; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">ORDEN #${a.orden}</div>
+                        <div class="abono-gym-name">${a.gym} ${badgeFrecuencia}</div>
+                        <span class="abono-cuit-badge" onclick="copiarAlPortapapeles('${cuitSinGuiones}', 'CUIT copiado: ${cuitSinGuiones}')" title="Tocar para copiar">
+                            📋 ${a.cuit}
+                        </span>
+                    </div>
+                    <div style="text-align:right; flex-shrink:0;">${alertasTopHTML}</div>
+                </div>
+                <div style="margin-top:8px;">
+                    ${htmlPrecio}
+                </div>
+                ${sectorAbonoActual !== 'completado' ? btnHistorialPrecios : ''}
+                ${sectorAbonoActual === 'facturar' ? `
+                    <button onclick="copiarAlPortapapeles('${textoMantenimiento}', 'Detalle de Factura copiado')"
+                            class="btn-mini" style="margin-top:10px; background:#f4f6f9; color:#475467; border:1px solid #e0e0e0;">
+                        📋 Copiar Detalle Factura
+                    </button>` : ''}
+            </div>
+
+            <div class="abono-body">
+                ${sectorAbonoActual === 'facturar' ? `
+                    <div style="margin-top:4px;">
+                        <input type="text" placeholder="Nº Factura (Enter para guardar)" id="inp-fact-${a.orden}"
+                               class="inp-factura"
+                               onkeypress="if(event.key==='Enter') guardarFacturaAbono(${a.orden}, '${idMes}')">
+                        <button class="btn-facturar" onclick="guardarFacturaAbono(${a.orden}, '${idMes}')" style="width:100%; margin-top:8px;">
+                            💾 Facturar
+                        </button>
+                    </div>
+                ` : sectorAbonoActual === 'enviar' ? `
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="color:#1a73e8; font-weight:800; font-size:14px;">📄 Factura N°: ${fNro}</span>
+                        <button onclick="revertirAFacturar(${a.orden}, '${idMes}')"
+                                class="btn-mini" style="background:#fce8e6; color:#d93025;">✏️ Editar N°</button>
+                    </div>
+                    ${alertasEnvioHTML}
+                    ${botonIpcEnvio}
+                    <label style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#5f6368; margin-bottom:4px; display:block;">📧 Correos del cliente</label>
+                    <textarea id="txt-mail-${a.orden}"
+                              style="width:100%; font-size:12px; padding:10px; border:2px solid #fbbc04; border-radius:10px; outline:none; font-family:monospace; resize:vertical; min-height:44px; box-sizing:border-box;"
+                              rows="2">${correosFormateados}</textarea>
+                    <div class="abono-actions" style="margin-top:10px;">
+                        <button class="btn-copiar" onclick="copiarAlPortapapeles(document.getElementById('txt-mail-${a.orden}').value, 'Mails copiados')">📋 Copiar Mails</button>
+                        <button class="btn-enviar" onclick="marcarComoEnviado(${a.orden}, '${idMes}')">✅ Marcar Enviado</button>
                     </div>
                 ` : `
-                    <div style="flex:1; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:#0f9d58; font-weight:bold; font-size:13px;">✅ Factura ${fNro} enviada.</span>
-                        <div style="display:flex; gap:5px;">
-                            <button onclick="revertirAEnviar(${a.orden}, '${idMes}')" style="background:#fce8e6; color:#d93025; border:none; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;" title="Volver a Por Enviar">❌ Anular Envío</button>
-                            <button onclick="revertirAFacturar(${a.orden}, '${idMes}')" style="background:#f1f3f4; color:#5f6368; border:1px solid #ccc; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;" title="Volver a Por Facturar">🗑️ Borrar N°</button>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#0f9d58; font-weight:800; font-size:14px;">✅ Factura ${fNro} enviada.</span>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="revertirAEnviar(${a.orden}, '${idMes}')"   class="btn-mini" style="background:#fce8e6; color:#d93025;">❌ Anular</button>
+                            <button onclick="revertirAFacturar(${a.orden}, '${idMes}')" class="btn-mini" style="background:#f4f6f9; color:#5f6368; border:1px solid #e0e0e0;">🗑️ Borrar N°</button>
                         </div>
                     </div>
                 `}

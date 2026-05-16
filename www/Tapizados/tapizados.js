@@ -68,9 +68,9 @@ async function verificarAcceso() {
 // ── Arranque ──────────────────────────────────────────────
 function iniciarTapizados() {
     const st = document.getElementById('status-tapizados');
-    st.className = "status mostrar cargando";
-    st.innerText = "Buscando pendientes... ⏳";
-    st.style.display = 'block';
+    st.className = "status-inline cargando";
+    st.innerHTML = '<span>⏳</span> Buscando pendientes...';
+    st.style.display = 'flex';
     document.getElementById('select-tapizados').style.display = 'none';
     document.getElementById('calc-tapizado').style.display = 'none';
 
@@ -83,23 +83,23 @@ function iniciarTapizados() {
     llamarAPI({ accion: "obtenerTapizadosPendientes" })
         .then(renderizarDropdownTapizados)
         .catch(() => {
-            st.innerText = "Error al conectar con la BD.";
-            st.className = "status mostrar error";
+            st.className = "status-inline error";
+            st.innerHTML = '<span>❌</span> Error al conectar con la BD.';
         });
 }
 
 function renderizarDropdownTapizados(pendientes) {
     listaTapizadosPendientes = pendientes;
-    document.getElementById('status-tapizados').style.display = 'none';
+    const st = document.getElementById('status-tapizados');
     const select = document.getElementById('select-tapizados');
-    select.innerHTML = '<option value="">-- Elegir Gimnasio Pendiente --</option>';
+    select.innerHTML = '<option value="">— Elegir Gimnasio Pendiente —</option>';
     if (pendientes.length === 0) {
-        const st = document.getElementById('status-tapizados');
-        st.innerText = "Todo al día. No hay gimnasios marcados para tapizar.";
-        st.style.display = 'block';
-        st.className = "status mostrar exito";
+        st.className = "status-inline exito";
+        st.innerHTML = '<span>✅</span> Todo al día. No hay gimnasios marcados para tapizar.';
+        st.style.display = 'flex';
         return;
     }
+    st.style.display = 'none';
     pendientes.forEach((p, i) => {
         let opt = document.createElement('option');
         opt.value = i; opt.text = `${p.gym} (${p.fecha})`;
@@ -119,7 +119,9 @@ function seleccionarTapizadoPendiente() {
     const isMaster = localStorage.getItem("auth_jefatura") === 'true';
 
     if (!tapizadoSeleccionadoActual.fotos.length) {
-        cont.innerHTML = "<p style='color:red;'>El técnico no subió fotos en esta visita.</p>";
+        cont.innerHTML = `<div style="text-align:center; padding:30px; color:#d93025; font-weight:700; font-size:15px;">
+            📷 El técnico no subió fotos en esta visita.
+        </div>`;
     } else {
         tapizadoSeleccionadoActual.fotos.forEach((url, i) => {
             if (!url.trim()) return;
@@ -128,23 +130,27 @@ function seleccionarTapizadoPendiente() {
             if (m) viewUrl = `https://drive.google.com/thumbnail?id=${m[0]}&sz=w800`;
             cont.innerHTML += `
             <div class="tapizado-item" data-foto-url="${url}">
-                <div class="foto-container">
-                    <span class="unidad-badge">FOTO ${i+1}</span>
-                    <img src="${viewUrl}" class="foto-preview">
-                    <button class="zoom-btn" onclick="abrirLupa('${url}')">🔍 Abrir</button>
+                <div class="tap-foto-header">
+                    <span class="unidad-badge">📸 Foto ${i+1}</span>
+                    <img src="${viewUrl}" class="foto-preview" alt="Foto tapizado">
+                    <button class="zoom-btn" onclick="abrirLupa('${url}')">🔍 Ampliar</button>
                 </div>
-                <div class="tap-input-box">
-                    <label style="color:#1a73e8;font-weight:bold;font-size:14px;">Detalle (Ej: Asiento):</label>
-                    <input type="text" class="input-desc in-desc" placeholder="Nombre de la pieza...">
-                    <div class="inputs-grid">
+                <div class="tap-inputs">
+                    <label class="tap-label">Detalle de la pieza</label>
+                    <input type="text" class="tap-desc-input input-desc in-desc"
+                           placeholder="Ej: Asiento, respaldo, laterales...">
+                    <div class="tap-nums-grid">
                         <div>
-                            <label style="font-size:12px;font-weight:bold;color:#555;">Cantidad:</label>
-                            <input type="number" class="input-cant in-cant" placeholder="Ej: 1" min="1"
+                            <label class="tap-label">Cantidad</label>
+                            <input type="number" class="input-cant in-cant" placeholder="1" min="1"
+                                   style="width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:10px; font-size:16px; font-weight:700; text-align:center;"
                                    oninput="recalcularTotalTapizadoVisual()">
                         </div>
                         <div>
-                            <label style="font-size:12px;font-weight:bold;color:#555;">Precio c/u:</label>
-                            <input type="text" inputmode="numeric" class="input-precio in-prec" placeholder="$0"
+                            <label class="tap-label">Precio por unidad</label>
+                            <input type="text" inputmode="numeric" class="input-precio in-prec"
+                                   placeholder="$0"
+                                   style="width:100%; padding:12px; border:2px solid #e0e0e0; border-radius:10px; font-size:16px; font-weight:700; text-align:center;"
                                    oninput="formatearMoneda(this); recalcularTotalTapizadoVisual()">
                         </div>
                     </div>
@@ -162,7 +168,7 @@ function abrirLupa(url) {
     let m = url.match(/[-\w]{25,}/);
     if (m) final = `https://drive.google.com/thumbnail?id=${m[0]}&sz=w2000`;
     document.getElementById('imgLupa').src = final;
-    document.getElementById('modalLupa').style.display = 'flex';
+    document.getElementById('modalLupa').classList.add('open');
 }
 
 function recalcularTotalTapizadoVisual() {

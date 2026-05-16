@@ -9,61 +9,207 @@
     <link rel="stylesheet" href="../style.css">
     <script src="../nav.js"></script>
     <script src="jefatura.js" defer></script>
+    <style>
+        /* ── KPI cards ── */
+        /* ═══ KPI GRID ═══ */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .kpi-grid-ingresos {
+            grid-template-columns: repeat(2, 1fr);
+            margin-bottom: 16px;
+        }
+        .kpi-card {
+            background: white;
+            border-radius: 14px;
+            padding: 14px 12px;
+            border: 1px solid rgba(0,0,0,0.07);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            transition: all 0.2s;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+        .kpi-title {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #5f6368;
+            margin-bottom: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .kpi-value {
+            font-size: 26px;
+            font-weight: 900;
+            color: #1a73e8;
+            line-height: 1.1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .kpi-dia-val { font-size: 15px !important; white-space: normal; }
+        .kpi-sub { font-size: 10px; color: #9aa0a6; margin-top: 4px; }
+        .kpi-card.verde { background: linear-gradient(135deg,#0f9d58,#006428); }
+        .kpi-card.verde .kpi-title,
+        .kpi-card.verde .kpi-value,
+        .kpi-card.verde .kpi-sub { color: white !important; }
+        .kpi-card.azul { background: linear-gradient(135deg,#1a73e8,#0d47a1); }
+        .kpi-card.azul .kpi-title,
+        .kpi-card.azul .kpi-value,
+        .kpi-card.azul .kpi-sub { color: white !important; }
+
+        /* Valores de ingresos: escalan al espacio disponible */
+        #kpi-ingresos-mes,
+        #kpi-ingresos-anio {
+            font-size: clamp(14px, 3.5vw, 24px);
+        }
+
+        /* ─ Mobile: apilar las 3 stats en 1 fila de 3 cols pequeñas ─ */
+        @media (max-width: 480px) {
+            .kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 7px; }
+            .kpi-grid-ingresos { grid-template-columns: repeat(2, 1fr); gap: 7px; }
+            .kpi-card { padding: 10px 8px; border-radius: 12px; }
+            .kpi-value { font-size: 18px; }
+            .kpi-dia-val { font-size: 12px !important; }
+            #kpi-ingresos-mes,
+            #kpi-ingresos-anio { font-size: clamp(12px, 4.5vw, 18px); }
+        }
+
+        /* ── Botón sincronizar ── */
+        .btn-sync {
+            width: 100%;
+            padding: 15px 18px;
+            background: linear-gradient(135deg,#7b1fa2,#4a148c);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-weight: 900;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 4px 16px rgba(123,31,162,0.4);
+            transition: all 0.2s;
+            margin-bottom: 16px;
+        }
+        .btn-sync:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ── Status sync ── */
+        .sync-status {
+            display: none;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 14px;
+            white-space: pre-line;
+            animation: fadeUp 0.3s ease;
+        }
+
+        /* ── Calendario mejorado ── */
+        .cal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            border-radius: 14px;
+            padding: 14px 18px;
+            margin-bottom: 14px;
+            border: 1px solid rgba(0,0,0,0.07);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .cal-title {
+            font-size: 18px;
+            font-weight: 900;
+            color: #1d2939;
+        }
+        .cal-nav-btn {
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            border: none;
+            background: #e8f0fe;
+            color: #1a73e8;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .cal-nav-btn:active { background: #1a73e8; color: white; transform: scale(0.92); }
+
+        /* Dark mode */
+        body.dark-mode .kpi-card:not(.verde):not(.azul) {
+            background: #1a1f2e;
+            border-color: rgba(255,255,255,0.07);
+        }
+        body.dark-mode .kpi-card:not(.verde):not(.azul) .kpi-title { color: #6b7db3 !important; }
+        body.dark-mode .kpi-card:not(.verde):not(.azul) .kpi-value { color: #60a5fa !important; }
+        body.dark-mode .kpi-card:not(.verde):not(.azul) .kpi-sub   { color: #4a5578 !important; }
+        body.dark-mode .cal-header { background: #1a1f2e; border-color: rgba(255,255,255,0.07); }
+        body.dark-mode .cal-title  { color: #e2e8f0 !important; }
+        body.dark-mode .cal-nav-btn { background: #1e3a8a; color: #60a5fa; }
+    </style>
 </head>
-<body style="background-color: #f0f2f5; padding-top: 70px; padding-bottom: 80px;">
+<body style="background-color:#f4f6f9; padding-top:60px; padding-bottom:80px;">
 
-    <!-- ── CONTENIDO JEFATURA ── -->
-    <div style="max-width: 1000px; margin: 0 auto; padding: 20px;">
+    <div style="max-width:900px; margin:0 auto; padding:18px 16px;">
 
+        <!-- Status carga -->
         <div id="status-jefatura" class="status mostrar cargando" style="margin-bottom:18px;">
             Verificando acceso... 🔒
         </div>
 
-        <!-- Botón sincronizar zonas -->
-        <div style="margin-bottom:16px; display:none;" id="zona-sync-btn">
-            <button id="btn-sincronizar-zonas" onclick="sincronizarHistorialEnZonasDesdeApp()"
-                style="width:100%; padding:13px 18px;
-                       background:linear-gradient(135deg,#7b1fa2,#4a148c);
-                       color:white; border:none; border-radius:10px;
-                       font-weight:900; font-size:14px; cursor:pointer;
-                       display:flex; align-items:center; justify-content:center; gap:10px;
-                       box-shadow:0 4px 14px rgba(123,31,162,0.35); transition:opacity 0.2s;">
-                📋 Sincronizar Historial → Hojas de Zona (Sheet)
-            </button>
-            <div id="status-sync-zonas"
-                 style="display:none; margin-top:10px; padding:12px 16px;
-                        border-radius:8px; font-size:13px; font-weight:bold; white-space:pre-line;"></div>
-        </div>
+        <!-- Botón sincronizar -->
+        <button class="btn-sync" id="btn-sincronizar-zonas"
+                onclick="sincronizarHistorialEnZonasDesdeApp()"
+                style="display:none;">
+            📋 Sincronizar Historial → Hojas de Zona
+        </button>
+        <div class="sync-status" id="status-sync-zonas"></div>
 
-        <!-- KPIs -->
-        <div class="kpi-container vista" id="kpi-box" style="display:none;">
+        <!-- KPIs: fila 1 (siempre visibles) -->
+        <div class="kpi-grid" id="kpi-box" style="display:none;">
             <div class="kpi-card">
-                <div class="kpi-title">Total Visitas (Mes)</div>
+                <div class="kpi-title">Visitas mes</div>
                 <div class="kpi-value" id="kpi-visitas">0</div>
+                <div class="kpi-sub">registros totales</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Técnicos Activos</div>
+                <div class="kpi-title">Técnicos</div>
                 <div class="kpi-value" id="kpi-tecnicos">0</div>
+                <div class="kpi-sub">activos este mes</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-title">Día Más Activo</div>
-                <div class="kpi-value" id="kpi-dia">-</div>
+                <div class="kpi-title">Día más activo</div>
+                <div class="kpi-value kpi-dia-val" id="kpi-dia">—</div>
+                <div class="kpi-sub">mayor concentración</div>
             </div>
-            <div class="kpi-card" id="kpi-card-ingresos-mes"
-                 style="display:none; background:linear-gradient(135deg,#1a73e8,#0d47a1); color:white; flex-direction:column;">
-                <div class="kpi-title" id="kpi-titulo-ingresos-mes" style="color:rgba(255,255,255,0.85);">💰 Ingresos (Mes)</div>
-                <div class="kpi-value" id="kpi-ingresos-mes" style="color:white; font-size:16px;">$-</div>
-                <div style="font-size:10px; opacity:0.7; margin-top:3px;">Desde Facturas Reales</div>
+        </div>
+        <!-- KPIs: fila 2 ingresos (se muestran cuando carga) -->
+        <div class="kpi-grid kpi-grid-ingresos" id="kpi-box-ingresos" style="display:none;">
+            <div class="kpi-card azul" id="kpi-card-ingresos-mes">
+                <div class="kpi-title" id="kpi-titulo-ingresos-mes">💰 Ingresos mes</div>
+                <div class="kpi-value" id="kpi-ingresos-mes">$—</div>
+                <div class="kpi-sub">facturas reales</div>
             </div>
-            <div class="kpi-card" id="kpi-card-ingresos-anio"
-                 style="display:none; background:linear-gradient(135deg,#0f9d58,#006428); color:white; flex-direction:column;">
-                <div class="kpi-title" style="color:rgba(255,255,255,0.85);">📅 Ingresos Año</div>
-                <div class="kpi-value" id="kpi-ingresos-anio" style="color:white; font-size:16px;">$-</div>
-                <div style="font-size:10px; opacity:0.7; margin-top:3px;">Sin facturas anuladas</div>
+            <div class="kpi-card verde" id="kpi-card-ingresos-anio">
+                <div class="kpi-title">📅 Ingresos año</div>
+                <div class="kpi-value" id="kpi-ingresos-anio">$—</div>
+                <div class="kpi-sub">sin notas de crédito</div>
             </div>
         </div>
 
-        <!-- Calendario mensual -->
+        <!-- Calendario -->
         <div class="cal-header" id="cal-header" style="display:none;">
             <button class="cal-nav-btn" onclick="cambiarMesJefatura(-1)">◀</button>
             <h2 class="cal-title" id="cal-titulo">Mes Año</h2>
@@ -74,7 +220,7 @@
         </div>
     </div>
 
-    <!-- ── MODAL PASSWORD ── -->
+    <!-- ── MODAL CONTRASEÑA ── -->
     <div id="modalPassword" class="modal-overlay">
         <div class="modal-content" style="max-width:370px; text-align:center; padding:35px 25px; border-radius:20px;">
             <div style="font-size:48px; margin-bottom:10px;">🔒</div>
@@ -83,36 +229,28 @@
                 Ingresá la clave para acceder al panel de jefatura.
             </p>
             <input type="password" id="input-pass" placeholder="Contraseña..."
-                   style="width:100%; padding:14px; border:2px solid #dadce0; border-radius:10px;
+                   style="width:100%; padding:15px; border:2px solid #dadce0; border-radius:10px;
                           font-size:16px; margin-bottom:14px; text-align:center; outline:none;
-                          box-sizing:border-box; transition:border-color 0.2s;"
+                          box-sizing:border-box; transition:border-color 0.2s; font-weight:700;"
                    onfocus="this.style.borderColor='#1a73e8'"
                    onblur="this.style.borderColor='#dadce0'"
                    onkeydown="if(event.key==='Enter') verificarAcceso()">
             <button onclick="verificarAcceso()"
-                    style="width:100%; padding:14px; background:#1a73e8; color:white; border:none;
-                           border-radius:10px; font-size:15px; font-weight:900; cursor:pointer;
-                           transition:all 0.2s; box-shadow:0 4px 14px rgba(26,115,232,0.35); margin-bottom:10px;"
-                    onmouseover="this.style.background='#1557b0'"
-                    onmouseout="this.style.background='#1a73e8'">
+                    id="btn-ingresar"
+                    style="width:100%; padding:15px; background:linear-gradient(135deg,#1a73e8,#1155cc);
+                           color:white; border:none; border-radius:10px; font-size:15px;
+                           font-weight:900; cursor:pointer; margin-bottom:10px;
+                           box-shadow:0 4px 14px rgba(26,115,232,0.4); transition:all 0.2s;">
                 Ingresar →
             </button>
             <button onclick="NavBar.navegarA('formulario')"
-                    style="width:100%; padding:11px; background:transparent; color:#5f6368; border:1.5px solid #dadce0;
-                           border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.2s;"
-                    onmouseover="this.style.background='#f1f3f4'"
-                    onmouseout="this.style.background='transparent'">
+                    style="width:100%; padding:11px; background:transparent; color:#5f6368;
+                           border:1.5px solid #dadce0; border-radius:10px; font-size:14px;
+                           font-weight:700; cursor:pointer; transition:all 0.2s;">
                 ◀ Volver al Formulario
             </button>
-            <div id="pass-error"
-                 style="display:none; color:#d93025; background:#fce8e6; padding:10px;
-                        border-radius:8px; font-weight:bold; font-size:14px; margin-top:14px; border:1px solid #f28b82;">
-                ❌ Contraseña incorrecta.
-            </div>
-            <div id="pass-loading"
-                 style="display:none; color:#1a73e8; font-weight:bold; font-size:14px; margin-top:14px;">
-                Verificando... ⏳
-            </div>
+            <div id="pass-loading" style="display:none; color:#1a73e8; font-weight:bold; font-size:14px; margin-top:14px;">Verificando... ⏳</div>
+            <div id="pass-error" style="display:none; color:#d93025; background:#fce8e6; padding:12px; border-radius:10px; font-weight:bold; font-size:14px; margin-top:14px; border:1px solid #f28b82;">❌ Contraseña incorrecta.</div>
         </div>
     </div>
 
@@ -123,23 +261,20 @@
                 <button class="cal-nav-btn" id="btn-prev" onclick="cambiarAño(-1)">◀</button>
                 <h2 id="modal-titulo" style="margin:0; font-size:20px; color:#1a73e8;">PERIODO</h2>
                 <button class="cal-nav-btn" id="btn-next" onclick="cambiarAño(1)">▶</button>
-                <span class="close-btn" onclick="cerrarRegistro()"
-                      style="position:relative; top:0; right:0; margin-left:auto;">&times;</span>
+                <span class="close-btn" onclick="cerrarRegistro()" style="position:relative; top:0; right:0; margin-left:auto;">&times;</span>
             </div>
             <div id="contenido-registro"></div>
         </div>
     </div>
 
-    <!-- ── MODAL RECORRIDO DÍA ── -->
+    <!-- ── MODAL RECORRIDO ── -->
     <div id="modalRecorrido" class="modal-overlay">
-        <div class="modal-content" style="max-width:400px; text-align:left;">
+        <div class="modal-content" style="max-width:420px;">
             <span class="close-btn"
                   onclick="document.getElementById('modalRecorrido').classList.remove('mostrar');
-                           setTimeout(()=>document.getElementById('modalRecorrido').style.display='none',300);">
-                &times;
-            </span>
-            <h2 id="titulo-modal-recorrido" style="color:#1a73e8; margin-bottom:15px; margin-top:0;">Recorrido del Día</h2>
-            <div id="contenido-modal-recorrido" style="max-height:60vh; overflow-y:auto; padding-right:5px;"></div>
+                           setTimeout(()=>document.getElementById('modalRecorrido').style.display='none',300);">&times;</span>
+            <h2 id="titulo-modal-recorrido" style="color:#1a73e8; margin:0 0 16px;"></h2>
+            <div id="contenido-modal-recorrido" style="max-height:65vh; overflow-y:auto;"></div>
         </div>
     </div>
 
@@ -159,12 +294,11 @@
             <div class="modal-sistema-titulo" style="color:#1a73e8;">ℹ️ Aviso</div>
             <div class="modal-sistema-msg" id="msg-alerta"></div>
             <div class="modal-sistema-btns">
-                <button onclick="document.getElementById('modalAlerta').style.display='none'"
-                        class="btn-modal-primario">Entendido</button>
+                <button onclick="document.getElementById('modalAlerta').style.display='none'" class="btn-modal-primario">Entendido</button>
             </div>
         </div>
     </div>
 
-    <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()" title="Modo Oscuro">🌙</button>
+    <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()">🌙</button>
 </body>
 </html>
