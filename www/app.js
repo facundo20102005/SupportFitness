@@ -2,7 +2,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbz3m7DoeDccCaL5oChb7dL9dz0fbs2DdAWXaEt_wEXAGn6R-U-15Jm3nomOAbQteIWN/exec"; 
 const VERSION_APP = 1.0;
 
-// --- VARIABLES Y FUNCIONES RECUPERADAS ---
+// --- VARIABLES Y FUNCIONES RECUPERADAS prueba---
 let valorDolarOficial = 1000;
 let cacheHistorial = [];
 let fechaSeleccionadaOriginal = "";
