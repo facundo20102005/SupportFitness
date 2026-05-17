@@ -296,6 +296,7 @@ async function verificarAccesoInformes() {
 async function cargarAppInformes() {
     obtenerDolar();
 
+    // Intentar cargar abonos base (no crítico si falla)
     try {
         listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
         let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
@@ -306,16 +307,46 @@ async function cargarAppInformes() {
             if (!globalGymsPresupuestos.includes(abono.gym)) globalGymsPresupuestos.push(abono.gym);
         });
         localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
-    } catch(e) { console.log("Error cargando abonos base", e); }
+    } catch(e) {
+        // Mostrar banner de error de conexión (no bloquear la app)
+        console.warn("Error cargando abonos base:", e.message);
+        mostrarBannerConexion(e.message);
+    }
 
     const hoy = new Date();
     const mm  = String(hoy.getMonth() + 1).padStart(2, '0');
     const yyyy = String(hoy.getFullYear());
-    if (document.getElementById('sel-mes-abono'))     document.getElementById('sel-mes-abono').value = mm;
-    if (document.getElementById('sel-anio-abono'))    document.getElementById('sel-anio-abono').value = yyyy;
+    if (document.getElementById('sel-mes-abono'))      document.getElementById('sel-mes-abono').value = mm;
+    if (document.getElementById('sel-anio-abono'))     document.getElementById('sel-anio-abono').value = yyyy;
     if (document.getElementById('selector-mes-abono')) document.getElementById('selector-mes-abono').value = `${yyyy}-${mm}`;
 
-    await cargarDatosBase();
+    await cargarDatosBase().catch(e => {
+        console.warn("Error en cargarDatosBase:", e.message);
+    });
+}
+
+// ── Banner de error de conexión visible al usuario ──
+function mostrarBannerConexion(detalle) {
+    const existente = document.getElementById('banner-conexion');
+    if (existente) return; // No duplicar
+    const banner = document.createElement('div');
+    banner.id = 'banner-conexion';
+    banner.style.cssText = `
+        position: fixed; top: 64px; left: 0; right: 0; z-index: 9998;
+        background: #d93025; color: white; text-align: center;
+        padding: 10px 16px; font-size: 13px; font-weight: 700;
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        box-shadow: 0 3px 12px rgba(217,48,37,0.4);`;
+    banner.innerHTML = `
+        <span>🔌 Sin conexión al servidor de Google — Verificá que el script esté bien desplegado</span>
+        <button onclick="location.reload()" style="background:white; color:#d93025; border:none;
+            padding:5px 12px; border-radius:8px; font-weight:900; cursor:pointer; font-size:12px;">
+            🔄 Reintentar
+        </button>
+        <button onclick="document.getElementById('banner-conexion').remove()"
+            style="background:rgba(255,255,255,0.2); color:white; border:none;
+            padding:5px 10px; border-radius:8px; cursor:pointer; font-size:14px;">✕</button>`;
+    document.body.appendChild(banner);
 }
 
 window.addEventListener('load', async () => {
@@ -362,12 +393,24 @@ function cambioMesPersonalizado() {
 async function llamarAPI(accionObj) {
     try {
         const response = await fetch(API_URL, {
-            method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(accionObj), redirect: "follow"
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(accionObj),
+            redirect: "follow"
         });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         const result = await response.json();
         if (result.status === "success") return result.data;
-        else throw new Error(result.message);
-    } catch (error) { throw error; }
+        else throw new Error(result.message || "El script devolvió un error sin mensaje.");
+    } catch (error) {
+        // Mejorar el mensaje de error para que sea más diagnóstico
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+            throw new Error("Sin conexión al servidor. Verificá:\n1) Que el script esté desplegado como 'Cualquier persona'\n2) Que la URL en API_URL use /exec (no /dev)\n3) Tu conexión a internet.");
+        }
+        throw error;
+    }
 }
 
 // 🔥 BURBUJA DE LISTA DE PRECIOS 🔥
@@ -615,8 +658,30 @@ function setModoApp(modo) {
     const labelGym = document.getElementById('label-gym');
     if (labelGym) labelGym.innerText = modo === 'presupuestos' ? 'Gimnasio / Cliente *' : 'Gimnasio *';
 
+    // ── Auto-rellenar fecha con HOY si el campo está vacío ──────
+    if (modo === 'presupuestos') {
+        const inputFecha = document.getElementById('input-fecha-presup');
+        if (inputFecha && !inputFecha.value.trim()) {
+            const hoy = new Date();
+            inputFecha.value = String(hoy.getDate()).padStart(2,'0') + '/' +
+                               String(hoy.getMonth()+1).padStart(2,'0') + '/' +
+                               hoy.getFullYear();
+        }
+    }
+
     switchTab('crear');
-    limpiarFormulario();
+    // Limpiar form inline (limpiarFormulario no existe como función separada)
+    const gymIn = document.getElementById('input-gym');
+    if (gymIn) gymIn.value = '';
+    const cuitIn = document.getElementById('input-cuit');
+    if (cuitIn) cuitIn.value = '';
+    const listaMaq = document.getElementById('lista-maquinas-dom');
+    if (listaMaq) listaMaq.innerHTML = '';
+    const burbs = document.getElementById('contenedor-burbujas-fecha');
+    if (burbs) burbs.innerHTML = '';
+    const detBurb = document.getElementById('detalle-motivo-burbuja');
+    if (detBurb) detBurb.style.display = 'none';
+    idEditando = null;
     agregarItem();
 }
 
@@ -634,6 +699,17 @@ function switchTab(tab) {
         if (tabC) { tabC.classList.add('activo'); }
         if (tabG) { tabG.classList.remove('activo'); }
         if (arcaCont) arcaCont.style.display = 'none';
+
+        // Auto-rellenar fecha si es presupuesto y el campo está vacío
+        if (modoApp === 'presupuestos') {
+            const inp = document.getElementById('input-fecha-presup');
+            if (inp && !inp.value.trim()) {
+                const hoy = new Date();
+                inp.value = String(hoy.getDate()).padStart(2,'0') + '/' +
+                            String(hoy.getMonth()+1).padStart(2,'0') + '/' +
+                            hoy.getFullYear();
+            }
+        }
     } else {
         if (crear)   crear.style.display   = 'none';
         if (creados) creados.style.display  = 'block';
@@ -995,14 +1071,14 @@ async function guardarDocumento() {
         agregarItem();
         mostrarMensaje('✅ Guardado exitosamente.', 'exito');
 
-        // Mostrar acceso rápido PDF/Mail con el ID del documento guardado
-        const nuevoId = respuesta?.id || payload.datos.id;
+        // Usar el id que ya tenemos en el payload (el backend devuelve string, no objeto con id)
+        const nuevoId = payloadDoc.datos.id;
         const accesoPDF = document.getElementById('acceso-rapido-pdf');
         const btnPDF    = document.getElementById('btn-rapido-pdf');
         const btnMail   = document.getElementById('btn-rapido-mail');
         if (accesoPDF && nuevoId) {
             accesoPDF.style.display = 'block';
-            if (btnPDF)  btnPDF.onclick  = () => abrirVistaPresupuesto(nuevoId);
+            if (btnPDF)  btnPDF.onclick  = (e) => abrirVistaPresupuesto(nuevoId, e.currentTarget);
             if (btnMail) btnMail.onclick = () => prepararMail(nuevoId);
         }
         setTimeout(() => switchTab('creados'), 1500);
@@ -1021,14 +1097,48 @@ document.addEventListener('click', (e) => {
 });
 async function obtenerYRenderizarCreados() {
     const contenedor = document.getElementById('contenedor-informes-creados');
-    contenedor.innerHTML = '<p style="text-align:center; color:#1a73e8; font-weight:bold;">Leyendo desde la nube... ⏳</p>';
+    if (!contenedor) return;
+
+    // Skeleton loader mientras carga
+    contenedor.innerHTML = `
+        <div style="text-align:center; padding:30px 20px; color:var(--inf-azul,#1a73e8);">
+            <div style="display:inline-block; width:24px; height:24px; border:3px solid #1a73e8;
+                 border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:10px;"></div>
+            <div style="font-weight:700; font-size:14px;">Leyendo desde la nube...</div>
+        </div>`;
+
     const hojaReq = modoApp === 'ofertas' ? HOJA_OFERTAS : HOJA_PRESUPUESTOS;
 
     try {
         documentosGuardados = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: hojaReq } });
-        renderizarTarjetas(); // Llama al dibujador
-    } catch(e) { 
-        contenedor.innerHTML = '<p style="text-align:center; color:red;">❌ Error de conexión.</p>'; 
+        renderizarTarjetas();
+    } catch(e) {
+        const esRedeploy = e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'));
+        const mensajeError = esRedeploy
+            ? 'Sin conexión con el servidor de Google. Verificá tu internet.'
+            : (e.message || 'Error desconocido');
+
+        contenedor.innerHTML = `
+            <div style="padding:24px 20px; text-align:center; background:var(--inf-rojo-lt,#fce8e6);
+                 border-radius:14px; border:1px solid rgba(217,48,37,0.3); margin-top:8px;">
+                <div style="font-size:28px; margin-bottom:10px;">🔌</div>
+                <div style="font-weight:900; font-size:15px; color:#d93025; margin-bottom:6px;">Error de conexión</div>
+                <div style="font-size:13px; color:#5f6368; margin-bottom:16px; font-family:monospace; background:rgba(0,0,0,0.05);
+                     padding:8px 12px; border-radius:8px; text-align:left; word-break:break-all;">
+                    ${mensajeError}
+                </div>
+                <div style="font-size:13px; color:#475467; margin-bottom:16px; text-align:left; line-height:1.7;">
+                    <b>Causas comunes:</b><br>
+                    1️⃣ El Apps Script no está desplegado como <b>"Acceso: Cualquier persona"</b><br>
+                    2️⃣ Agregaste funciones nuevas al Backend y no lo <b>volviste a desplegar</b><br>
+                    3️⃣ La URL del script en <code>API_URL</code> es incorrecta
+                </div>
+                <button onclick="obtenerYRenderizarCreados()"
+                        style="background:#1a73e8; color:white; border:none; padding:12px 24px;
+                               border-radius:10px; font-weight:900; font-size:14px; cursor:pointer;">
+                    🔄 Reintentar
+                </button>
+            </div>`;
     }
 }
 
@@ -1252,18 +1362,20 @@ function renderizarTarjetas() {
                 </div>
                 <!-- Acciones rápidas: PDF y Mail -->
                 <div style="display:flex; gap:8px; margin-top:8px;">
-                    <button onclick="abrirVistaPresupuesto(${doc.id})"
+                    <button onclick="abrirVistaPresupuesto(${doc.id}, this)"
                             style="flex:1; padding:11px; background:linear-gradient(135deg,#1a73e8,#1155cc);
                                    color:white; border:none; border-radius:10px; font-weight:900;
                                    font-size:13px; cursor:pointer; box-shadow:0 3px 10px rgba(26,115,232,0.35);
-                                   display:flex; align-items:center; justify-content:center; gap:6px;">
+                                   display:flex; align-items:center; justify-content:center; gap:6px;
+                                   transition:all 0.2s; min-height:44px;">
                         📄 Ver y Exportar PDF
                     </button>
                     <button onclick="prepararMail(${doc.id})"
                             style="flex:1; padding:11px; background:linear-gradient(135deg,#0f9d58,#0b7a42);
                                    color:white; border:none; border-radius:10px; font-weight:900;
                                    font-size:13px; cursor:pointer; box-shadow:0 3px 10px rgba(15,157,88,0.35);
-                                   display:flex; align-items:center; justify-content:center; gap:6px;">
+                                   display:flex; align-items:center; justify-content:center; gap:6px;
+                                   transition:all 0.2s; min-height:44px;">
                         📧 Preparar Mail
                     </button>
                 </div>
@@ -1274,458 +1386,331 @@ function renderizarTarjetas() {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  📄 GENERADOR DE PRESUPUESTO PDF + 📧 MAIL AUTOMÁTICO
+//  🗂️ HISTORIAL LOCAL DE PDFs GENERADOS
 // ════════════════════════════════════════════════════════════════
 
-function abrirVistaPresupuesto(id) {
-    const doc = documentosGuardados.find(d => d.id === id);
-    if (!doc) return;
+// ── Registrar PDF con base64 para previsualización ──────────────
+function registrarPDFGenerado(doc, base64, nombre) {
+    try {
+        const historial = JSON.parse(localStorage.getItem('historial_pdfs') || '[]');
+        const entrada = {
+            ts:      Date.now(),
+            id:      doc.id,
+            cliente: doc.cliente || '—',
+            fecha:   doc.fechaLimpia || doc.fecha || '—',
+            total:   doc.total || 0,
+            modo:    typeof modoApp !== 'undefined' ? modoApp : '—',
+            nombre:  nombre || ('Presupuesto_' + (doc.cliente || 'doc') + '.pdf'),
+            base64:  base64 || null   // null si no se guardó por tamaño
+        };
+        historial.unshift(entrada);
 
-    // ── Base URL para los assets ─────────────────────────────────
-    const href = window.location.href;
-    const raiz = href.includes('/Informes/')
-        ? href.substring(0, href.indexOf('/Informes/')) + '/'
-        : href.substring(0, href.lastIndexOf('/') + 1);
-    const A = (f) => raiz + 'assets/' + f;
-
-    // ── Fecha limpia (usa fechaLimpia que ya parsea ISO) ─────────
-    const fechaLimpia = doc.fechaLimpia && doc.fechaLimpia !== 'Sin Fecha'
-        ? doc.fechaLimpia
-        : (() => {
-            const f = String(doc.fecha || '');
-            if (f.includes('T')) {
-                const d = new Date(f);
-                return String(d.getUTCDate()).padStart(2,'0') + '/' +
-                       String(d.getUTCMonth()+1).padStart(2,'0') + '/' +
-                       d.getUTCFullYear();
-            }
-            return f || '—';
-        })();
-    const fechaFormateada = fechaLimpia.replace(/\//g, ' / ');
-
-    // ── Montos ───────────────────────────────────────────────────
-    const total  = Number(doc.total) || 0;
-    const sinIVA = total > 0 ? Math.round(total / 1.21) : 0;
-    const ivaVal = total > 0 ? Math.round(total - sinIVA) : 0;
-    // Mostrar totales solo si el doc tiene precio real en el total
-    const mostrarTotales = total > 0;
-    const fmtARS = n => '$' + Math.round(n).toLocaleString('es-AR');
-    const DASH = '————————';
-
-    // ── Filas de ítems ───────────────────────────────────────────
-    let filasHTML = '';
-    (doc.items || []).forEach(m => {
-        const precioUnit = Number(m.precio) || 0;
-        const cant       = Number(m.cant) || 1;
-        const subtotal   = precioUnit * cant;
-        const extra      = (m.metros && m.terminales)
-            ? ` (${m.metros}m / ${m.terminales} term.)` : '';
-
-        if (m.desc && m.desc.trim()) {
-            filasHTML += `
-            <tr style="background:#eaf0fb;">
-                <td style="padding:5px 8px; border:1px solid #c8d3ec;"></td>
-                <td colspan="4" style="padding:7px 12px; font-weight:900; font-size:14px;
-                    border:1px solid #c8d3ec; color:#1a1a1a;">${m.desc}:</td>
-            </tr>`;
+        // Guardar — si excede 4MB de localStorage, guardar sin base64
+        const json = JSON.stringify(historial.slice(0, 50));
+        if (json.length < 4_000_000) {
+            localStorage.setItem('historial_pdfs', json);
+        } else {
+            // Guardar sin base64 los más viejos
+            const sinBlob = historial.slice(0, 50).map((e, i) =>
+                i === 0 ? e : { ...e, base64: null }
+            );
+            localStorage.setItem('historial_pdfs', JSON.stringify(sinBlob));
         }
-        filasHTML += `
-        <tr>
-            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:center;
-                font-weight:900; font-size:14px; width:90px;">
-                ${cant > 1 ? '* ' + cant : ''}</td>
-            <td style="padding:7px 12px; border:1px solid #c8d3ec; font-size:13px;">
-                ${m.tipo}${extra}</td>
-            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:center;
-                font-size:13px; width:60px; font-weight:700;">SI</td>
-            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:right;
-                font-size:13px; font-weight:700; width:130px;">
-                ${cant > 1 && precioUnit > 0 ? fmtARS(precioUnit) : ''}</td>
-            <td style="padding:7px 8px; border:1px solid #c8d3ec; text-align:right;
-                font-weight:900; font-size:14px; width:155px;">
-                ${subtotal > 0 ? fmtARS(subtotal) + '+IVA' : ''}</td>
-        </tr>`;
-    });
-
-    // Filas de relleno
-    const nItems = (doc.items || []).length;
-    for (let i = 0; i < Math.max(0, 5 - nItems * 2); i++) {
-        filasHTML += `<tr>
-            <td style="height:28px; border:1px solid #c8d3ec;"></td>
-            <td style="border:1px solid #c8d3ec;"></td>
-            <td style="border:1px solid #c8d3ec;"></td>
-            <td style="border:1px solid #c8d3ec;"></td>
-            <td style="border:1px solid #c8d3ec;"></td>
-        </tr>`;
-    }
-
-    // Fila observación + totales
-    filasHTML += `
-    <tr>
-        <td rowspan="3" style="border:1px solid #c8d3ec;"></td>
-        <td rowspan="3" style="padding:8px 12px; border:1px solid #c8d3ec;
-            font-size:12px; vertical-align:top; font-weight:700; color:#555;">Observación:</td>
-        <td rowspan="3" style="border:1px solid #c8d3ec;"></td>
-        <td style="padding:7px 10px; border:1px solid #c8d3ec; font-weight:800;
-            background:#eaf0fb; font-size:12px; text-align:right; color:#1a3a8f;">SUBTOTAL</td>
-        <td style="padding:7px 10px; border:1px solid #c8d3ec; text-align:right;
-            font-size:12px; font-weight:700; color:#555; font-family:monospace;">
-            ${mostrarTotales ? fmtARS(sinIVA) : DASH}</td>
-    </tr>
-    <tr>
-        <td style="padding:7px 10px; border:1px solid #c8d3ec; font-weight:800;
-            background:#eaf0fb; font-size:12px; text-align:right; color:#1a3a8f;">IVA 21 %</td>
-        <td style="padding:7px 10px; border:1px solid #c8d3ec; text-align:right;
-            font-size:12px; font-weight:700; color:#555; font-family:monospace;">
-            ${mostrarTotales ? fmtARS(ivaVal) : DASH}</td>
-    </tr>
-    <tr>
-        <td style="padding:7px 10px; border:1px solid #c8d3ec; font-weight:900;
-            background:#1a3a8f; color:white; font-size:13px; text-align:right;">TOTAL</td>
-        <td style="padding:7px 10px; border:1px solid #c8d3ec; text-align:right;
-            font-weight:900; font-size:13px; background:#1a3a8f; color:white; font-family:monospace;">
-            ${mostrarTotales ? fmtARS(total) : DASH}</td>
-    </tr>`;
-
-    // ── Registrar en historial local ─────────────────────────────
-    registrarPDFGenerado(doc);
-
-    const clienteUpper = (doc.cliente || '').toUpperCase();
-    const cuitStr      = doc.cuit ? '  ·  CUIT: ' + doc.cuit : '';
-
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Presupuesto — ${doc.cliente}</title>
-<style>
-* { box-sizing:border-box; margin:0; padding:0; }
-body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 13px;
-    background: #dde3ec;
-    padding: 20px 16px 90px;
-    color: #111;
-}
-.hoja {
-    background: white;
-    max-width: 860px;
-    margin: 0 auto;
-    border: 1px solid #aab;
-    box-shadow: 0 4px 28px rgba(0,0,0,0.18);
-}
-.hdr {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px 10px 12px;
-    border-bottom: 3px solid #1a3a8f;
-    gap: 10px;
-}
-.hdr-logo img { height: 76px; display: block; object-fit: contain; }
-.hdr-marcas {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-.hdr-marcas img {
-    height: 40px;
-    object-fit: contain;
-    max-width: 130px;
-}
-.band {
-    background: #f4f7fb;
-    border-bottom: 1px solid #c8d3ec;
-    padding: 6px 14px;
-}
-.pres-title {
-    font-size: 13px;
-    font-weight: 900;
-    letter-spacing: 3px;
-    color: #1a3a8f;
-    margin-bottom: 5px;
-}
-.band-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 16px;
-    margin-bottom: 3px;
-    flex-wrap: wrap;
-}
-.band-empresa { font-size: 12px; font-weight: 700; color: #111; }
-.band-cliente { font-size: 13px; font-weight: 900; color: #1a3a8f; }
-.band-sub { font-size: 11px; color: #444; font-style: italic; }
-.band-fecha { font-size: 12px; font-weight: 900; color: #111; }
-.tabla-wrap { padding: 10px 14px 0; }
-table.items { width:100%; border-collapse:collapse; }
-table.items thead th {
-    background: #1a3a8f;
-    color: white;
-    padding: 8px 10px;
-    font-size: 12px;
-    border: 1px solid #112d78;
-    font-weight: 800;
-}
-table.items thead th:nth-child(1) { width:90px; text-align:center; }
-table.items thead th:nth-child(3) { width:60px; text-align:center; }
-table.items thead th:nth-child(4) { width:130px; text-align:right; }
-table.items thead th:nth-child(5) { width:155px; text-align:right; }
-.obs-bloque { padding: 8px 14px 14px; }
-#obs-area {
-    width: 100%;
-    min-height: 68px;
-    font-size: 12px;
-    font-family: Arial, sans-serif;
-    font-weight: 700;
-    color: #c0392b;
-    border: 1px dashed #ddd;
-    border-radius: 3px;
-    padding: 6px 8px;
-    resize: vertical;
-    line-height: 1.8;
-    white-space: pre-wrap;
-    background: transparent;
-}
-.toolbar {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    background: rgba(255,255,255,0.96);
-    border-top: 2px solid #dde3f0;
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    padding: 12px 20px;
-    z-index: 100;
-    flex-wrap: wrap;
-    backdrop-filter: blur(6px);
-}
-.btn {
-    padding: 11px 22px;
-    border: none;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 900;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: all 0.2s;
-}
-.btn:active { transform: scale(0.97); }
-.btn-pdf  { background:linear-gradient(135deg,#1a3a8f,#1155cc); color:white; box-shadow:0 4px 14px rgba(26,58,143,0.45); }
-.btn-mail { background:linear-gradient(135deg,#0f9d58,#0b7a42); color:white; box-shadow:0 4px 14px rgba(15,157,88,0.4); }
-.btn-close{ background:#f1f3f5; color:#3c4043; border:1.5px solid #ddd; }
-@media print {
-    body { background:white !important; padding:0 !important; }
-    .hoja { box-shadow:none !important; border:none !important; max-width:100% !important; }
-    .toolbar { display:none !important; }
-    #obs-area { border:none !important; }
-    table.items thead th,
-    tr td[style*="background:#1a3a8f"],
-    tr td[style*="background:#eaf0fb"] {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-    }
-}
-</style>
-</head>
-<body>
-<div class="hoja">
-
-    <!-- HEADER -->
-    <div class="hdr">
-        <div class="hdr-logo">
-            <img src="${A('Logoparapdf.jpeg')}" alt="Support Fitness"
-                 onerror="this.src='${A('Logoparapdf.png')}'"
-                 onerror="this.src='${A('logo2.jpeg')}'">
-        </div>
-        <div class="hdr-marcas">
-            <img src="${A('StarTrac.png')}"  alt="Star Trac"
-                 onerror="this.outerHTML='<b style=&quot;color:#003087;font-size:11px;font-style:italic;&quot;>⊙ STAR TRAC·</b>'">
-            <img src="${A('Spinning.png')}"  alt="Spinning"
-                 onerror="this.outerHTML='<b style=&quot;color:#e31837;font-size:11px;&quot;>⊗ SPINNING.</b>'">
-            <img src="${A('Octane.png')}"    alt="Octane"
-                 onerror="this.outerHTML='<b style=&quot;color:#ff6600;font-size:11px;&quot;>Octane</b>'">
-            <img src="${A('Paramount.png')}" alt="Paramount"
-                 onerror="this.outerHTML='<b style=&quot;color:#111;font-size:11px;&quot;>/PARAMOUNT.</b>'">
-        </div>
-    </div>
-
-    <!-- INFO BANDA -->
-    <div class="band">
-        <div class="pres-title">P R E S U P U E S T O</div>
-        <div class="band-row">
-            <span class="band-empresa">SUPPORT FITNESS de Aban Ricardo Ezequiel</span>
-            <span class="band-cliente">CLIENTE : ${clienteUpper}${cuitStr}</span>
-        </div>
-        <div class="band-row">
-            <span class="band-sub">CHILE 1239 &nbsp; CP1098 - CABA &nbsp;&nbsp; | &nbsp;&nbsp; CEL :15-61177878 &nbsp;&nbsp; support_fitness@hotmail.com</span>
-            <span class="band-fecha">FECHA : ${fechaFormateada}</span>
-        </div>
-    </div>
-
-    <!-- TABLA -->
-    <div class="tabla-wrap">
-        <table class="items">
-            <thead>
-                <tr>
-                    <th>Cantidad</th>
-                    <th style="text-align:left;"></th>
-                    <th>Disp.</th>
-                    <th>Precio Unit.</th>
-                    <th>Precio</th>
-                </tr>
-            </thead>
-            <tbody>${filasHTML}</tbody>
-        </table>
-    </div>
-
-    <!-- OBSERVACIONES -->
-    <div class="obs-bloque">
-        <textarea id="obs-area">Observaciones :
-Forma de Pago :  Pago Anticipado
-El siguiente presupuesto tiene una validez de 3 dias</textarea>
-    </div>
-
-</div>
-
-<!-- TOOLBAR -->
-<div class="toolbar">
-    <button class="btn btn-pdf" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-    <button class="btn btn-mail" onclick="abrirMail()">📧 Preparar Mail</button>
-    <button class="btn btn-close" onclick="window.close()">✕ Cerrar</button>
-</div>
-
-<script>
-function abrirMail() {
-    const cli   = ${JSON.stringify(doc.cliente || '')};
-    const cuit  = ${JSON.stringify(doc.cuit || '')};
-    const fecha = ${JSON.stringify(fechaLimpia)};
-    const tot   = ${total};
-    const asunto= encodeURIComponent('Presupuesto Support Fitness \u2014 ' + cli);
-    const cuerpo= encodeURIComponent(
-        'Buenas tardes, Se\u00f1ores de administraci\u00f3n.\n\n' +
-        'Adjunto el presupuesto correspondiente al trabajo a realizar en sus instalaciones.\n\n' +
-        'Cliente: ' + cli + '\n' +
-        (cuit ? 'CUIT: ' + cuit + '\n' : '') +
-        'Fecha: ' + fecha + '\n' +
-        (tot > 0 ? 'Monto total: $' + tot.toLocaleString('es-AR') + '\n' : '') +
-        '\nLas reparaciones quedar\u00e1n confirmadas una vez se env\u00ede el comprobante de pago correspondiente.\n\n' +
-        'Por favor Confirmar recepci\u00f3n.\n\n' +
-        'Cordiales Saludos\nFacundo Dur\u00e1n\n' +
-        'SUPPORT FITNESS\n' +
-        'Tel: +54 9 11 6117-7878  |  support_fitness@hotmail.com\n' +
-        'Chile 1239, CP1098 - CABA  |  CUIT: 20-26285613-6'
-    );
-    window.location.href = 'mailto:?subject=' + asunto + '&body=' + cuerpo;
-}
-<\/script>
-</body>
-</html>`;
-
-    const ventana = window.open('', '_blank', 'width=940,height=860,scrollbars=yes');
-    if (ventana) { ventana.document.write(html); ventana.document.close(); }
-    else { mostrarMensaje('⚠️ Habilitá los popups para este sitio e intentá de nuevo.', 'error'); }
+    } catch(e) { console.warn('historial_pdfs error:', e); }
 }
 
-// ── Registro de PDFs generados (localStorage) ────────────────────
-function registrarPDFGenerado(doc) {
-    try {
-        const historial = JSON.parse(localStorage.getItem('historial_pdfs') || '[]');
-        historial.unshift({
-            ts:       Date.now(),
-            id:       doc.id,
-            cliente:  doc.cliente || '—',
-            fecha:    doc.fechaLimpia || doc.fecha || '—',
-            total:    doc.total || 0,
-            modo:     typeof modoApp !== 'undefined' ? modoApp : '—'
-        });
-        // Guardar solo los últimos 100
-        localStorage.setItem('historial_pdfs', JSON.stringify(historial.slice(0, 100)));
-    } catch(e) {}
-}
-
+// ── Ver historial con buscador y previsualización ────────────────
 function verHistorialPDFs() {
-    try {
-        const historial = JSON.parse(localStorage.getItem('historial_pdfs') || '[]');
-        if (historial.length === 0) {
-            mostrarMensaje('No hay PDFs generados en este dispositivo todavía.', 'cargando');
+    const modal = document.getElementById('modal-historial-pdfs');
+    const lista = document.getElementById('lista-historial-pdfs');
+    if (!modal || !lista) { mostrarMensaje('Modal no encontrado.', 'error'); return; }
+
+    // Renderizar con buscador
+    const renderLista = (filtro) => {
+        let historial = [];
+        try { historial = JSON.parse(localStorage.getItem('historial_pdfs') || '[]'); }
+        catch(e) {}
+
+        const q = (filtro || '').toLowerCase().trim();
+        const filtrados = q
+            ? historial.filter(r => (r.cliente || '').toLowerCase().includes(q) ||
+                                    (r.fecha   || '').includes(q) ||
+                                    (r.nombre  || '').toLowerCase().includes(q))
+            : historial;
+
+        if (filtrados.length === 0) {
+            lista.innerHTML = `
+                <div style="text-align:center; padding:40px 20px; color:var(--inf-muted);">
+                    <div style="font-size:36px; margin-bottom:10px;">${q ? '🔍' : '📭'}</div>
+                    <div style="font-weight:700;">${q ? 'Sin resultados para "' + q + '"' : 'No hay PDFs generados todavía.'}</div>
+                </div>`;
             return;
         }
-        const modal = document.getElementById('modal-historial-pdfs');
-        const lista = document.getElementById('lista-historial-pdfs');
-        if (!modal || !lista) return;
 
-        lista.innerHTML = historial.map((r, i) => {
-            const d = new Date(r.ts);
-            const cuandoStr = d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
-            const totalStr  = r.total > 0 ? '$' + Number(r.total).toLocaleString('es-AR') : '—';
-            return `<div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px;
-                    border-bottom:1px solid var(--inf-border); gap:10px; flex-wrap:wrap; animation:scaleIn 0.2s ease ${i*0.03}s both;">
-                <div style="min-width:0;">
-                    <div style="font-weight:900; font-size:14px; color:var(--inf-text);">${r.cliente}</div>
+        lista.innerHTML = filtrados.map((r, i) => {
+            const d          = new Date(r.ts);
+            const cuandoStr  = d.toLocaleDateString('es-AR') + ' ' +
+                               d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+            const totalStr   = r.total > 0
+                ? '$' + Math.round(r.total).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+                : '—';
+            const tieneBlob  = !!r.base64;
+            const btnVer     = tieneBlob
+                ? `<button onclick="abrirPDFDesdeHistorial(${i})"
+                           style="background:var(--inf-azul); color:white; border:none;
+                                  padding:7px 14px; border-radius:8px; font-weight:800;
+                                  font-size:12px; cursor:pointer; white-space:nowrap;
+                                  transition:all 0.2s;">
+                       👁️ Ver PDF
+                   </button>`
+                : `<span style="font-size:11px; color:var(--inf-muted); white-space:nowrap;">Sin preview</span>`;
+
+            return `<div style="display:flex; align-items:center; justify-content:space-between;
+                        padding:13px 16px; border-bottom:1px solid var(--inf-border); gap:10px;
+                        flex-wrap:wrap; animation:scaleIn 0.2s ease ${i*0.025}s both;">
+                <div style="flex:1; min-width:0;">
+                    <div style="font-weight:900; font-size:14px; color:var(--inf-text);
+                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        ${r.cliente}
+                    </div>
                     <div style="font-size:12px; color:var(--inf-sub); margin-top:2px;">
-                        Doc. fecha: ${r.fecha} &nbsp;·&nbsp; ${r.modo === 'presupuestos' ? '💰 Presupuesto' : '🛠️ Oferta'}
+                        ${r.fecha} &nbsp;·&nbsp;
+                        ${r.modo === 'presupuestos' ? '💰 Presupuesto' : '🛠️ Oferta'}
+                        &nbsp;·&nbsp; <span style="color:var(--inf-muted);">${cuandoStr}</span>
+                    </div>
+                    <div style="font-size:11px; color:var(--inf-muted); margin-top:2px;
+                                overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        📄 ${r.nombre || '—'}
                     </div>
                 </div>
-                <div style="text-align:right; flex-shrink:0;">
-                    <div style="font-weight:900; color:var(--inf-azul);">${totalStr}</div>
-                    <div style="font-size:11px; color:var(--inf-muted);">Exportado: ${cuandoStr}</div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0;">
+                    <div style="font-weight:900; color:var(--inf-azul); font-size:15px;">${totalStr}</div>
+                    ${btnVer}
                 </div>
             </div>`;
         }).join('');
 
-        modal.style.display = 'flex';
-        setTimeout(() => modal.classList.add('mostrar'), 10);
-    } catch(e) { mostrarMensaje('Error al leer historial.', 'error'); }
+        // Guardar filtrados en window para que abrirPDFDesdeHistorial pueda acceder por índice
+        window._historialFiltrado = filtrados;
+    };
+
+    // Construir modal con buscador
+    lista.innerHTML = '';
+    // Inyectar buscador si no existe
+    let buscadorHist = document.getElementById('buscador-historial-pdfs');
+    if (!buscadorHist) {
+        buscadorHist = document.createElement('div');
+        buscadorHist.id = 'buscador-historial-pdfs';
+        buscadorHist.style.cssText = 'padding:12px 16px; border-bottom:1px solid var(--inf-border);';
+        buscadorHist.innerHTML = `
+            <input type="text" id="input-busq-hist"
+                   placeholder="🔍 Buscar por cliente, fecha, nombre..."
+                   style="width:100%; padding:10px 14px; border:2px solid var(--inf-border);
+                          border-radius:10px; font-size:14px; font-weight:600; outline:none;
+                          background:var(--inf-card); color:var(--inf-text);
+                          transition:border-color 0.2s;"
+                   oninput="verHistorialPDFs._render(this.value)"
+                   onfocus="this.style.borderColor='var(--inf-azul)'"
+                   onblur="this.style.borderColor='var(--inf-border)'">`;
+        lista.parentNode.insertBefore(buscadorHist, lista);
+    } else {
+        // Limpiar buscador al abrir
+        const inp = document.getElementById('input-busq-hist');
+        if (inp) inp.value = '';
+    }
+
+    // Exponer función de render para el input
+    verHistorialPDFs._render = renderLista;
+    renderLista('');
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        modal.classList.add('mostrar');
+        document.getElementById('input-busq-hist')?.focus();
+    }, 50);
+}
+
+// ── Abrir PDF desde el historial local ──────────────────────────
+function abrirPDFDesdeHistorial(idx) {
+    const historial = window._historialFiltrado || [];
+    const entrada   = historial[idx];
+    if (!entrada || !entrada.base64) {
+        mostrarMensaje('Este PDF ya no está en caché. Regeneralo desde "Ver Guardados".', 'error');
+        return;
+    }
+    try {
+        const bytes  = atob(entrada.base64);
+        const arr    = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        const blob   = new Blob([arr], { type: 'application/pdf' });
+        const url    = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch(e) {
+        mostrarMensaje('Error al abrir el PDF: ' + e.message, 'error');
+    }
 }
 
 
 
+// ── Barra de progreso para PDF ──────────────────────────────────
+let _pdfEnProceso = false;
+
+function _mostrarProgressPDF(btnEl) {
+    if (!btnEl) return;
+    btnEl.disabled = true;
+    btnEl.dataset.textoOriginal = btnEl.innerHTML;
+    btnEl.innerHTML = `
+        <span style="display:flex; align-items:center; gap:8px; justify-content:center;">
+            <span style="display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.4);
+                         border-top-color:white; border-radius:50%; animation:spin 0.7s linear infinite;"></span>
+            Generando PDF...
+        </span>`;
+}
+function _ocultarProgressPDF(btnEl) {
+    if (!btnEl) return;
+    btnEl.disabled = false;
+    btnEl.innerHTML = btnEl.dataset.textoOriginal || '📄 Ver y Exportar PDF';
+    _pdfEnProceso  = false;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  📄 GENERADOR DE PRESUPUESTO PDF
+// ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
+//  📄 GENERADOR PDF REAL — jsPDF  (landscape A4, réplica exacta del Excel)
+//  Columnas Excel: A(9.14), B(13), C(7.86), D(60.29), E(9.71), F(16.29), G(22) chars
+//  Página: landscape, márgenes 0.25" = 6.35mm
+// ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
+//  📄 GENERAR PDF — usa Plantilla_Presupuesto en Google Sheets
+//  Flujo: datos → backend escribe en la plantilla → exporta PDF
+//  → descarga directa en el navegador → registra en Presupuestos_Emitidos
+// ════════════════════════════════════════════════════════════════
+
+function abrirVistaPresupuesto(id, btnEl) {
+    if (_pdfEnProceso) return;
+    _pdfEnProceso = true;
+    _mostrarProgressPDF(btnEl);
+
+    const doc = documentosGuardados.find(d => String(d.id) === String(id));
+    if (!doc) {
+        mostrarMensaje('❌ Documento no encontrado.', 'error');
+        _ocultarProgressPDF(btnEl);
+        _pdfEnProceso = false;
+        return;
+    }
+
+    // ── Fecha limpia ─────────────────────────────────────────────
+    const fechaLimpia = (() => {
+        if (doc.fechaLimpia && doc.fechaLimpia !== 'Sin Fecha') return doc.fechaLimpia;
+        const f = String(doc.fecha || '');
+        if (!f) return new Date().toLocaleDateString('es-AR');
+        if (f.includes('T')) {
+            const d = new Date(f);
+            return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()}`;
+        }
+        return f;
+    })();
+
+    // ── Payload para el backend ──────────────────────────────────
+    const payload = {
+        cliente: doc.cliente  || '',
+        cuit:    doc.cuit     || '',
+        fecha:   fechaLimpia,
+        total:   Number(doc.total) || 0,
+        items:   (doc.items || []).map(m => ({
+            desc:       m.desc      || '',
+            tipo:       m.tipo      || '',
+            cant:       Number(m.cant)   || 1,
+            precio:     Number(m.precio) || 0,
+            metros:     m.metros     || '',
+            terminales: m.terminales || ''
+        }))
+    };
+
+    // ── Llamar al backend ────────────────────────────────────────
+    mostrarMensaje('⏳ Generando PDF desde la plantilla... puede tardar unos segundos.', 'cargando');
+
+    llamarAPI({ accion: 'actualizarPlantillaYExportarPDF', payload })
+        .then(result => {
+            if (!result.ok || !result.base64) {
+                throw new Error(result.error || 'El backend no devolvió el PDF.');
+            }
+
+            // ── Descargar PDF desde base64 ───────────────────────
+            const bytes    = atob(result.base64);
+            const arr      = new Uint8Array(bytes.length);
+            for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+            const blob     = new Blob([arr], { type: 'application/pdf' });
+            const url      = URL.createObjectURL(blob);
+            const link     = document.createElement('a');
+            link.href      = url;
+            link.download  = result.nombre || `Presupuesto_${doc.cliente}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+            // Registrar en historial con base64 para preview posterior
+            registrarPDFGenerado(doc, result.base64, result.nombre);
+            mostrarMensaje(`✅ PDF descargado: ${result.nombre}`, 'exito');
+        })
+        .catch(err => {
+            console.error('PDF error:', err);
+            mostrarMensaje('❌ Error al generar PDF: ' + err.message, 'error');
+        })
+        .finally(() => {
+            setTimeout(() => _ocultarProgressPDF(btnEl), 600);
+        });
+}
+
+
 // ─────────────────────────────────────────────────────────────────
-//  📧 PREPARAR MAIL (desde la tarjeta, sin abrir ventana)
+//  📧 PREPARAR MAIL — abre Outlook Web Compose directamente
+//  No depende del cliente de correo del SO ni la cuenta default
 // ─────────────────────────────────────────────────────────────────
 function prepararMail(id) {
-    const doc = documentosGuardados.find(d => d.id === id);
+    const doc = documentosGuardados.find(d => String(d.id) === String(id));
     if (!doc) return;
 
     const cliente = doc.cliente || '—';
     const total   = Number(doc.total) || 0;
-    const fecha   = doc.fecha || doc.fechaLimpia || '—';
+    const fecha   = doc.fechaLimpia || doc.fecha || '—';
 
-    const asunto = encodeURIComponent('Presupuesto Support Fitness — ' + cliente);
+    const asunto = 'Presupuesto Support Fitness — ' + cliente;
+    const cuerpo = [
+        'Buenas tardes, Señores de administración.',
+        '',
+        'Adjunto el presupuesto correspondiente al trabajo a realizar en sus instalaciones.',
+        '',
+        'Cliente: ' + cliente,
+        doc.cuit ? 'CUIT: ' + doc.cuit : null,
+        'Fecha: ' + fecha,
+        total > 0 ? 'Monto total: $' + total.toLocaleString('es-AR') : null,
+        '',
+        'Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago correspondiente.',
+        '',
+        'Por favor Confirmar recepción.',
+        '',
+        'Cordiales Saludos',
+        'Facundo Durán',
+        'SUPPORT FITNESS',
+        'Tel: +54 9 11 6117-7878  |  support_fitness@hotmail.com',
+        'Chile 1239, CP1098 - CABA  |  CUIT: 20-26285613-6'
+    ].filter(l => l !== null).join('\n');
 
-    // Resumen de ítems para el mail
-    const resumenItems = (doc.items || [])
-        .map(m => `• ${m.cant > 1 ? m.cant + 'x ' : ''}${m.tipo}${m.desc ? ' (' + m.desc + ')' : ''}`)
-        .join('\n');
-
-    const cuerpo = encodeURIComponent(
-        'Buenas tardes, Señores de administración.\n\n' +
-        'Adjunto el presupuesto correspondiente al trabajo a realizar en sus instalaciones.\n\n' +
-        'Cliente: ' + cliente + '\n' +
-        (doc.cuit ? 'CUIT: ' + doc.cuit + '\n' : '') +
-        'Fecha: ' + fecha + '\n' +
-        'Monto total: $' + total.toLocaleString('es-AR') + '\n' +
-        (resumenItems ? '\nDetalle:\n' + resumenItems + '\n' : '') +
-        '\nLas reparaciones quedarán confirmadas una vez se envíe el comprobante de pago de la factura correspondiente.\n\n' +
-        'Por favor Confirmar recepción.\n\n' +
-        'Cordiales Saludos\n' +
-        'Facundo Durán\n' +
-        'SUPPORT FITNESS\n' +
-        'Tel: +54 9 11 6117-7878\n' +
-        'support_fitness@hotmail.com'
-    );
-
-    const mailto = `mailto:?subject=${asunto}&body=${cuerpo}`;
-    const link = document.createElement('a');
-    link.href = mailto;
-    link.click();
-    link.remove();
+    // Outlook Web App — no abre el cliente del SO
+    const params = new URLSearchParams({
+        subject: asunto,
+        body:    cuerpo
+    });
+    window.open('https://outlook.live.com/mail/0/deeplink/compose?' + params.toString(), '_blank');
 }
+
+
 
 // ─────────────────────────────────────────────────────────────────
 // 🔥 NUEVO CAMBIO DE ESTADO (Para Múltiples Selects) 🔥
@@ -2414,6 +2399,10 @@ function renderizarAbonos() {
                               rows="2">${correosFormateados}</textarea>
                     <div class="abono-actions" style="margin-top:10px;">
                         <button class="btn-copiar" onclick="copiarAlPortapapeles(document.getElementById('txt-mail-${a.orden}').value, 'Mails copiados')">📋 Copiar Mails</button>
+                        <button class="btn-enviar" style="background:#7c3aed; flex:1.5;"
+                                onclick="enviarCorreoAbonoAutomatico(${a.orden}, '${idMes}', '${a.gym.replace(/'/g,"\\'")}', '${periodoStr}', ${pBase}, '${fNro}')">
+                            📧 Enviar Correo
+                        </button>
                         <button class="btn-enviar" onclick="marcarComoEnviado(${a.orden}, '${idMes}')">✅ Marcar Enviado</button>
                     </div>
                 ` : `
@@ -2480,6 +2469,75 @@ function guardarFacturaAbono(orden, idMes) {
     .catch(() => mostrarMensaje('❌ Error de red al guardar', 'error'));
 }
 
+// ════════════════════════════════════════════════════════════
+//  📧 ENVIAR CORREO DE ABONO AUTOMÁTICAMENTE (via Backend MailApp)
+//  Llama al servidor Google Apps Script que usa MailApp para
+//  enviar el correo directamente sin abrir ningún cliente de correo.
+// ════════════════════════════════════════════════════════════
+async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, precio, factura) {
+    // Leer correos del textarea (puede haber sido editado manualmente)
+    const txtArea    = document.getElementById('txt-mail-' + orden);
+    const correos    = txtArea ? txtArea.value.trim() : '';
+
+    if (!correos) {
+        mostrarMensaje('⚠️ No hay correo cargado para este cliente. Completá el campo de mails.', 'error');
+        return;
+    }
+
+    const abono   = listaAbonosBase.find(a => String(a.orden) === String(orden)) || {};
+    const precioFmt = '$' + Math.round(precio).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const anio    = new Date().getFullYear();
+
+    // Confirmación antes de enviar
+    const confirmar = confirm(
+        `¿Enviar correo automáticamente?\n\n` +
+        `📧 Para: ${correos}\n` +
+        `🏋️ Cliente: ${gimnasio}\n` +
+        `📅 Periodo: ${periodo} ${anio}\n` +
+        `📄 Factura: ${factura || '(sin número)'}\n` +
+        `💰 Importe: ${precioFmt}\n\n` +
+        `El correo se enviará desde la cuenta de Google del script.`
+    );
+    if (!confirmar) return;
+
+    // Feedback visual
+    const btn = event?.currentTarget;
+    if (btn) {
+        btn.disabled  = true;
+        btn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;"></span>Enviando...</span>';
+    }
+
+    try {
+        const result = await llamarAPI({
+            accion: 'enviarCorreoAbono',
+            payload: {
+                orden,
+                mesAnio:        idMes,
+                gimnasio,
+                periodo:        periodo + ' ' + anio,
+                factura,
+                precio,
+                correoCliente:  correos
+            }
+        });
+
+        if (result && result.ok) {
+            mostrarMensaje(`✅ Correo enviado a: ${correos}`, 'exito');
+            // Marcar como enviado automáticamente
+            await marcarComoEnviado(orden, idMes);
+        } else {
+            mostrarMensaje('❌ Error al enviar: ' + (result?.error || 'Error desconocido'), 'error');
+        }
+    } catch(e) {
+        mostrarMensaje('❌ Error de conexión: ' + e.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled  = false;
+            btn.innerHTML = '📧 Enviar Correo';
+        }
+    }
+}
+
 function marcarComoEnviado(orden, idMes) {
     let mesIdx = parseInt(idMes.split("/")[0], 10) - 1;
     const abono = listaAbonosBase.find(a => a.orden === orden);
@@ -2516,4 +2574,37 @@ function toggleDarkMode() {
     const isDark = document.body.classList.contains('dark-mode');
     localStorage.setItem('darkMode', isDark ? 'yes' : 'no');
     document.getElementById('btn-dark-mode').innerText = isDark ? '☀️' : '🌙';
+}
+// ─── NUEVA FUNCIÓN INTERNA PARA ENVIAR CORREO DESDE EL PANEL DE INFORMES ───
+function enviarMailRapidoAbono(orden, idMes) {
+    // Buscamos los datos del abono correspondiente en tu lista de memoria
+    const abono = listaAbonosBase.find(a => a.orden === parseInt(orden, 10)) || {};
+    const gimnasioNombre = abono.gimnasio || "Cliente";
+    
+    if(!confirm(`¿Querés enviar el correo predeterminado de Facturación a ${gimnasioNombre} para el periodo ${idMes}?`)) {
+        return;
+    }
+
+    mostrarMensaje('⏳ Enviando correo electrónico...', 'info');
+
+    // Llamada directa a tu API de Google Apps Script
+    llamarAPI({ 
+        accion: "enviarCorreoAbono", 
+        payload: { 
+            orden: orden,
+            mesAnio: idMes, 
+            gimnasio: gimnasioNombre,
+            correoCliente: "support_fitness@hotmail.com" // <-- CAMBIAR ACÁ por el correo real si lo tenés guardado en el abono
+        } 
+    })
+    .then(respuesta => {
+        if(respuesta.ok) {
+            mostrarMensaje('✅ Correo enviado correctamente', 'success');
+            // Opcionalmente pintás el casillero para indicar que ya fue enviado
+            marcarComoEnviado(orden, idMes); 
+        } else {
+            mostrarMensaje('❌ Error al enviar: ' + respuesta.error, 'error');
+        }
+    })
+    .catch(() => mostrarMensaje('❌ Error de conexión con el Servidor', 'error'));
 }

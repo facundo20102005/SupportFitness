@@ -1584,3 +1584,8 @@ body.dark-mode [style*="color: #444"] { color: #94a3b8 !important; }
     .kpi-value { font-size: 14px !important; }
     .sub-tab { font-size: 12px; padding: 11px 6px; }
 }
+
+/* ── Spinner para botones de carga ── */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
