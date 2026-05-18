@@ -2,7 +2,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbz3m7DoeDccCaL5oChb7dL9dz0fbs2DdAWXaEt_wEXAGn6R-U-15Jm3nomOAbQteIWN/exec"; 
 const VERSION_APP = 1.0;
 
-// --- VARIABLES Y FUNCIONES RECUPERADAS prueba---
+// --- VARIABLES Y FUNCIONES RECUPERADAS ---
 let valorDolarOficial = 1000;
 let cacheHistorial = [];
 let fechaSeleccionadaOriginal = "";
@@ -28,12 +28,14 @@ let cronogramaZonasDinamico = null;
 
 async function cargarDatosBase() {
     try {
-        // Cargar historial principal + Historial Anual + Cronograma desde Sheet en paralelo
-        const [datosViejos, resultadoAnual] = await Promise.all([
+        // Cargar historial + Cronograma + Abonos en paralelo (Abonos para check de remito)
+        const [datosViejos, resultadoAnual, datosAbonos] = await Promise.all([
             llamarAPI({ accion: "obtenerRegistroHistorico" }),
-            llamarAPI({ accion: "obtenerCronogramaDesdeSheet" }).catch(() => ({ zonas: [], historial: [] }))
+            llamarAPI({ accion: "obtenerCronogramaDesdeSheet" }).catch(() => ({ zonas: [], historial: [] })),
+            llamarAPI({ accion: "obtenerAbonosBD" }).catch(() => [])
         ]);
-        
+        window.listaAbonosGlobal = datosAbonos || [];
+
         // Combinar historial principal con el del Historial Anual
         let combined = [...(datosViejos || [])];
         const datosNuevos = resultadoAnual.historial || [];
@@ -89,18 +91,28 @@ window.addEventListener('offline', () => actualizarDotConexion(true));
 
 // --- MOTOR DE BASE DE DATOS LOCAL (IndexedDB) ---
 const DB_NAME = 'SupportFitnesDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;  // v2: agrega hash para prevenir duplicados offline
 let db;
+
+// DB v2: agrega índice 'hash' para prevenir duplicados exactos
 
 function initDB() {
     return new Promise((resolve, reject) => {
         let request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onerror = event => { console.error("Error IndexedDB", event); reject(event); };
+        request.onerror   = event => { reject(event); };
         request.onsuccess = event => { db = event.target.result; resolve(db); };
         request.onupgradeneeded = event => {
-            let db = event.target.result;
-            if (!db.objectStoreNames.contains('pendientes')) {
-                db.createObjectStore('pendientes', { autoIncrement: true });
+            let dbObj = event.target.result;
+            // Crear o migrar el store
+            if (!dbObj.objectStoreNames.contains('pendientes')) {
+                let store = dbObj.createObjectStore('pendientes', { autoIncrement: true });
+                store.createIndex('hash', 'hash', { unique: true });
+            } else if (event.oldVersion < 2) {
+                // Migración: agregar índice hash al store existente
+                let store = event.target.transaction.objectStore('pendientes');
+                if (!store.indexNames.contains('hash')) {
+                    store.createIndex('hash', 'hash', { unique: false });
+                }
             }
         };
     });
@@ -108,11 +120,41 @@ function initDB() {
 
 function guardarOfflineBD(data) {
     return new Promise((resolve, reject) => {
-        let transaction = db.transaction(['pendientes'], 'readwrite');
-        let store = transaction.objectStore('pendientes');
-        let request = store.add(data);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject();
+        // Generar hash único basado en técnico + gimnasio + motivo + timestamp truncado
+        // Truncamos a 1 minuto para que reenvíos accidentales del mismo formulario
+        // en el mismo minuto NO generen duplicados.
+        var tsMinuto = Math.floor(Date.now() / 60000); // cambia cada minuto
+        var hashStr  = (data.tecnico || '') + '|' + (data.gimnasio || '') + '|' +
+                       (data.motivos || '') + '|' + tsMinuto;
+        var hash = hashStr.split('').reduce(function(acc, c) {
+            return ((acc << 5) - acc + c.charCodeAt(0)) | 0;
+        }, 0).toString(36);
+
+        data._hash    = hash;   // guardamos el hash en el dato
+        data._savedAt = new Date().toISOString();
+
+        var transaction = db.transaction(['pendientes'], 'readwrite');
+        var store = transaction.objectStore('pendientes');
+
+        // Verificar si ya existe un registro con el mismo hash
+        var checkReq = store.openCursor();
+        var yaExiste = false;
+        checkReq.onsuccess = function(event) {
+            var cursor = event.target.result;
+            if (cursor) {
+                if (cursor.value._hash === hash) { yaExiste = true; }
+                cursor.continue();
+            } else {
+                if (yaExiste) {
+                    resolve(); // ya estaba guardado, no duplicar
+                    return;
+                }
+                var addReq = store.add(data);
+                addReq.onsuccess = function() { resolve(); };
+                addReq.onerror   = function() { reject(); };
+            }
+        };
+        checkReq.onerror = function() { reject(); };
     });
 }
 
@@ -332,8 +374,85 @@ function eliminarArchivo(index) { archivosSeleccionados.splice(index, 1); render
 function toggleHistorial() { const panel = document.getElementById("contenedor-meses"); const btn = document.getElementById("btnToggle"); if (panel.classList.contains("mostrar-en-movil")) { panel.classList.remove("mostrar-en-movil"); btn.innerText = "Ver Historial de Visitas ▼"; } else { panel.classList.add("mostrar-en-movil"); btn.innerText = "Ocultar Historial ▲"; } }
 function mostrarLista(listaFiltrada, mostrar) { let listaContainer = document.getElementById("lista"); listaContainer.innerHTML = ""; if (!mostrar || listaFiltrada.length === 0) { listaContainer.style.display = "none"; return; } listaContainer.style.display = "block"; listaFiltrada.forEach(g => { let item = document.createElement("div"); item.className = "gym-list-item"; item.innerText = g; item.addEventListener('mousedown', function (e) { e.preventDefault(); }); item.onclick = () => seleccionar(g); listaContainer.appendChild(item); }); }
 function normalizar(str) { return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
-function filtrar() { let val = document.getElementById("buscador").value; let valNorm = normalizar(val); let ghost = document.getElementById("ghost"); if (val.length > 0) { let match = gimnasios.find(g => normalizar(g).startsWith(valNorm)); if (match) { let parteEscrita = match.substring(0, val.length); let parteRestante = match.substring(val.length); ghost.innerHTML = `<span style="opacity:0;">${parteEscrita}</span>${parteRestante}`; } else { ghost.innerHTML = ""; } } else { ghost.innerHTML = ""; } if (valNorm.length > 0) { let filtrados = gimnasios.filter(g => normalizar(g).includes(valNorm)); mostrarLista(filtrados, true); } else { mostrarLista([], false); } }
-function seleccionar(valor) { let buscador = document.getElementById("buscador"); buscador.value = valor; document.getElementById("ghost").innerHTML = ""; mostrarLista([], false); setTimeout(() => { buscador.blur(); }, 10); }
+function filtrar() {
+    let val = document.getElementById("buscador").value;
+    let valNorm = normalizar(val);
+    let ghost = document.getElementById("ghost");
+
+    // Limpiar aviso si el campo se borró
+    if (!val.trim()) {
+        ['aviso-remito', 'aviso-oc'].forEach(function(id) {
+            var el = document.getElementById(id); if (el) el.remove();
+        });
+    } 
+    if (val.length > 0) { let match = gimnasios.find(g => normalizar(g).startsWith(valNorm)); if (match) { let parteEscrita = match.substring(0, val.length); let parteRestante = match.substring(val.length); ghost.innerHTML = `<span style="opacity:0;">${parteEscrita}</span>${parteRestante}`; } else { ghost.innerHTML = ""; } } else { ghost.innerHTML = ""; } if (valNorm.length > 0) { let filtrados = gimnasios.filter(g => normalizar(g).includes(valNorm)); mostrarLista(filtrados, true); } else { mostrarLista([], false); } }
+function seleccionar(valor) {
+    let buscador = document.getElementById("buscador");
+    buscador.value = valor;
+    document.getElementById("ghost").innerHTML = "";
+    mostrarLista([], false);
+    setTimeout(() => { buscador.blur(); }, 10);
+
+    // MEJORA 8 — Verificar si el gym pide remito y advertir al técnico
+    _verificarRemitoGym(valor);
+}
+
+function _verificarRemitoGym(gymNombre) {
+    // Limpiar avisos anteriores
+    ['aviso-remito', 'aviso-oc'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
+    });
+
+    if (!gymNombre || !gymNombre.trim()) return;
+    if (!window.listaAbonosGlobal || window.listaAbonosGlobal.length === 0) return;
+
+    var gymNorm = gymNombre.toLowerCase().normalize("NFD")
+                   .replace(/[\u0300-\u036f]/g, "").trim();
+
+    var abono = window.listaAbonosGlobal.find(function(a) {
+        var n = String(a.gym || "").toLowerCase().normalize("NFD")
+                 .replace(/[\u0300-\u036f]/g, "").trim();
+        // Coincidencia flexible: igual, uno contiene al otro, o similaridad parcial
+        return n === gymNorm ||
+               n.includes(gymNorm) ||
+               gymNorm.includes(n) ||
+               (gymNorm.length > 5 && n.split(' ').some(function(w) { return gymNorm.includes(w) && w.length > 4; }));
+    });
+
+    if (!abono || !abono.pideRemito) return;
+
+    var aviso = document.createElement("div");
+    aviso.id = "aviso-remito";
+    aviso.style.cssText = [
+        "background:#fff3e0;",
+        "border-left:4px solid #ff9800;",
+        "border-radius:10px;",
+        "padding:14px 16px;",
+        "margin-top:12px;",
+        "display:flex;",
+        "align-items:flex-start;",
+        "gap:12px;"
+    ].join(" ");
+    aviso.innerHTML = [
+        "<span style='font-size:24px; flex-shrink:0;'>📋</span>",
+        "<div>",
+        "  <div style='font-weight:900; font-size:14px; color:#e65100; margin-bottom:5px;'>",
+        "    ⚠️ Este cliente requiere REMITO físico",
+        "  </div>",
+        "  <div style='font-size:13px; color:#bf360c; line-height:1.6;'>",
+        "    <strong>" + gymNombre + "</strong> exige remito firmado.<br>",
+        "    <strong><u>Recordá fotografiar y subir el remito antes de enviar.</u></strong>",
+        "  </div>",
+        "</div>"
+    ].join("");
+
+    // Insertar DENTRO de card-gimnasio, al final del card (ID estable, siempre existe)
+    var cardGim = document.getElementById("card-gimnasio");
+    if (cardGim) {
+        cardGim.appendChild(aviso);
+    }
+}
 document.addEventListener('click', function (event) { const buscador = document.getElementById('buscador'); const lista = document.getElementById('lista'); if (event.target !== buscador && event.target !== lista) { mostrarLista([], false); } });
 function mostrarBotonHistorial() { 
     let btnNav = document.getElementById('btn-historial-nav');
@@ -609,9 +728,15 @@ async function enviarFormulario() {
     
     mostrarStatus("Enviando datos a la nube... ☁️", "cargando");
     llamarAPI({ accion: "procesarYGuardarTodo", payload: data })
-        .then((respuesta) => { 
-            mostrarStatus(respuesta, "exito"); 
-            reiniciarFormulario(); 
+        .then((respuesta) => {
+            // El backend devuelve "Remito R-XXXX creado" — renombrar para no confundir
+            // con el remito físico que el técnico debe subir
+            const numR = (respuesta.match(/R-\d+/) || [''])[0];
+            const msgFinal = numR
+                ? `✅ Visita registrada correctamente (Registro ${numR})`
+                : `✅ ${respuesta}`;
+            mostrarStatus(msgFinal, "exito");
+            reiniciarFormulario();
         })
         .catch((error) => { 
             if (error.message.includes("Failed to fetch") || error.message.includes("Network")) { guardarLocal(); } 

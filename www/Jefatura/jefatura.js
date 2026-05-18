@@ -81,10 +81,13 @@ async function iniciarJefatura() {
     if (btnSync) btnSync.style.display = 'flex';
 
     try {
-        const [datosCalendario, resultadoCron] = await Promise.all([
+        const [datosCalendario, resultadoCron, datosAbonos] = await Promise.all([
             llamarAPI({ accion: "obtenerDatosCalendarioWeb" }),
-            llamarAPI({ accion: "obtenerCronogramaDesdeSheet" }).catch(() => ({ zonas: [], historial: [] }))
+            llamarAPI({ accion: "obtenerCronogramaDesdeSheet" }).catch(() => ({ zonas: [], historial: [] })),
+            llamarAPI({ accion: "obtenerAbonosBD" }).catch(() => [])
         ]);
+        // Guardar globalmente para el modal de clientes
+        window.listaAbonosGlobal = datosAbonos || [];
 
         if (resultadoCron.zonas && resultadoCron.zonas.length > 0) {
             cronogramaZonasDinamico = resultadoCron.zonas;
@@ -115,6 +118,8 @@ function renderizarJefaturaCompleta(datos) {
     datosCalendarioGlobal = datos;
     document.getElementById('status-jefatura').style.display = 'none';
     document.getElementById('kpi-box').style.display = 'grid';
+    const btnExportar = document.getElementById('btn-exportar-clientes');
+    if (btnExportar) btnExportar.style.display = 'flex';
     document.getElementById('cal-header').style.display = 'flex';
     document.getElementById('cal-wrapper').style.display = 'block';
     dibujarGrillaMes(fechaVistaJefatura.getFullYear(), fechaVistaJefatura.getMonth());
@@ -181,11 +186,15 @@ function actualizarKPIIngresos() {
     const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
     // Formato abreviado para mobile: $14.6M, $680K, etc.
+    // PC: valor completo. Mobile (≤768px): abreviado para no romper layout.
+    const esMobile = window.innerWidth <= 768;
     const fmt = n => {
         const v = Math.round(n);
-        if (v >= 1_000_000) return '$' + (v / 1_000_000).toLocaleString('es-AR', {maximumFractionDigits:1}) + 'M';
-        if (v >= 1_000)     return '$' + (v / 1_000).toLocaleString('es-AR', {maximumFractionDigits:0}) + 'K';
-        return '$' + v.toLocaleString('es-AR');
+        if (esMobile) {
+            if (v >= 1_000_000) return '$' + (v / 1_000_000).toLocaleString('es-AR', {maximumFractionDigits:1}) + 'M';
+            if (v >= 1_000)     return '$' + (v / 1_000).toLocaleString('es-AR', {maximumFractionDigits:0}) + 'K';
+        }
+        return '$' + v.toLocaleString('es-AR'); // PC: siempre número completo
     };
     // Formato completo para el tooltip (title)
     const fmtFull = n => '$' + Math.round(n).toLocaleString('es-AR');
@@ -482,4 +491,114 @@ function activarBotonHistorial() {
     btn.style.cssText = 'background:#0f9d58; color:white; opacity:1; cursor:pointer;';
     btn.innerText = '📅 Historial Anual';
     btn.onclick = () => abrirRegistroAnual();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MEJORA 9 — Mostrar listado de clientes en pantalla (sin descarga)
+// ════════════════════════════════════════════════════════════════
+function exportarClientesExcel() {
+    if (!window.listaAbonosGlobal || window.listaAbonosGlobal.length === 0) {
+        alert("No hay datos de clientes cargados todavía.");
+        return;
+    }
+
+    // Crear modal overlay con tabla
+    var existing = document.getElementById("_modal-clientes");
+    if (existing) { existing.remove(); }
+
+    var abonos = window.listaAbonosGlobal;
+    var total  = abonos.reduce(function(acc, a) { return acc + (Number(a.precio) || 0); }, 0);
+    var fmtARS = function(n) {
+        return "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    };
+
+    var filas = abonos.map(function(a, i) {
+        return [
+            "<tr style=\"border-bottom:1px solid rgba(255,255,255,0.06)\">",
+            "  <td style=\"padding:8px 10px; font-weight:700; color:#94a3b8; font-size:12px;\">" + (i+1) + "</td>",
+            "  <td style=\"padding:8px 10px; font-weight:900; font-size:13px;\">" + (a.gym || "—") + "</td>",
+            "  <td style=\"padding:8px 10px; font-size:12px; color:#94a3b8;\">" + (a.tipoFact || "—") + "</td>",
+            "  <td style=\"padding:8px 10px; font-size:12px; color:#94a3b8;\">" + (a.cuit || "—") + "</td>",
+            "  <td style=\"padding:8px 10px; font-size:12px;\">",
+        "    <div style='display:flex; align-items:center; gap:6px; max-width:200px;'>",
+        "      <span style='overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;' title='" + (a.correo || '') + "'>",
+        "        " + (a.correo || "—"),
+        "      </span>",
+        (a.correo ? "      <button onclick=\"navigator.clipboard.writeText('" + (a.correo || '').replace(/'/g, "\\'") + "').then(()=>{ this.textContent='✅'; setTimeout(()=>this.textContent='📋',1500); })\" style='background:none;border:none;cursor:pointer;font-size:13px;flex-shrink:0;padding:2px;' title='Copiar correo'>📋</button>" : ""),
+        "    </div>",
+        "  </td>",
+            "  <td style=\"padding:8px 10px; font-weight:900; color:#34d399; text-align:right;\">" + fmtARS(a.precio || 0) + "</td>",
+            "  <td style=\"padding:8px 10px; text-align:center; font-size:12px;\">" + (a.pideRemito ? "✅" : "—") + "</td>",
+            "</tr>"
+        ].join("");
+    }).join("");
+
+    var modal = document.createElement("div");
+    modal.id = "_modal-clientes";
+    modal.style.cssText = [
+        "position:fixed; inset:0; z-index:99999;",
+        "background:rgba(0,0,0,0.7); display:flex; align-items:flex-start;",
+        "justify-content:center; padding:20px; overflow-y:auto;",
+        "backdrop-filter:blur(4px);"
+    ].join("");
+
+    modal.innerHTML = [
+        "<div style=\"background:#1e293b; border-radius:18px; width:100%; max-width:900px;",
+        "           border:1px solid rgba(255,255,255,0.08); overflow:hidden;",
+        "           box-shadow:0 25px 60px rgba(0,0,0,0.5); margin:auto;\">",
+
+        "  <!-- Header -->",
+        "  <div style=\"display:flex; align-items:center; justify-content:space-between;",
+        "              padding:18px 22px; background:linear-gradient(135deg,#0f9d58,#0b7a42);\">",
+        "    <div>",
+        "      <div style=\"font-size:18px; font-weight:900; color:white;\">📊 Clientes Activos</div>",
+        "      <div style=\"font-size:13px; color:rgba(255,255,255,0.8); margin-top:2px;\">",
+        "        " + abonos.length + " clientes · Total mensual: " + fmtARS(total),
+        "      </div>",
+        "    </div>",
+        "    <button onclick=\"document.getElementById(\'_modal-clientes\').remove()\"",
+        "            style=\"background:rgba(255,255,255,0.2); border:none; color:white;",
+        "                   width:36px; height:36px; border-radius:50%; font-size:18px;",
+        "                   cursor:pointer; font-weight:900;\">✕</button>",
+        "  </div>",
+
+        "  <!-- Tabla scrollable -->",
+        "  <div style=\"overflow-x:auto;\">",
+        "    <table style=\"width:100%; border-collapse:collapse; font-family:inherit;\">",
+        "      <thead>",
+        "        <tr style=\"background:rgba(255,255,255,0.04);\">",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:left;\">#</th>",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:left;\">CLIENTE</th>",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:left;\">FACT.</th>",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:left;\">CUIT</th>",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:left;\">CORREO</th>",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:right;\">PRECIO/MES</th>",
+        "          <th style=\"padding:10px; font-size:11px; color:#64748b; text-align:center;\">REMITO</th>",
+        "        </tr>",
+        "      </thead>",
+        "      <tbody style=\"color:#f1f5f9;\">" + filas + "</tbody>",
+        "    </table>",
+        "  </div>",
+
+        "  <!-- Footer -->",
+        "  <div style=\"padding:14px 22px; background:rgba(0,0,0,0.2);",
+        "              display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;\">",
+        "    <span style=\"font-size:13px; color:#64748b;\">",
+        "      Total mensual estimado: <strong style=\"color:#34d399;\">" + fmtARS(total) + "</strong>",
+        "    </span>",
+        "    <button onclick=\"document.getElementById(\'_modal-clientes\').remove()\"",
+        "            style=\"background:#334155; border:none; color:white; padding:8px 18px;",
+        "                   border-radius:8px; font-weight:800; cursor:pointer; font-size:13px;\">",
+        "      Cerrar",
+        "    </button>",
+        "  </div>",
+        "</div>"
+    ].join("\n");
+
+    // Cerrar al hacer clic en el fondo
+    modal.addEventListener("click", function(e) {
+        if (e.target === modal) modal.remove();
+    });
+
+    document.body.appendChild(modal);
 }

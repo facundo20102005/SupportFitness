@@ -399,6 +399,11 @@ function renderizarTarjetas() {
                 <div class="doc-actions">
                     <button class="btn-doc-edit" onclick="editarDocumento(${doc.id})">✏️ Editar</button>
                     <button class="btn-doc-del"  onclick="eliminarDocumento(${doc.id})">🗑️ Eliminar</button>
+                    ${doc.cliente ? `<button class="btn-doc-edit" style="background:#4a1d96; color:white; border:none;"
+                        onclick="verFotosEnDrive('${(doc.cliente||'').replace(/'/g,'')}', '${doc.fechaLimpia||''}')"
+                        title="Ver fotos de la visita en Google Drive">
+                        🖼️ Ver Fotos
+                    </button>` : ''}
                 </div>
                 <!-- Acciones rápidas: PDF y Mail -->
                 <div style="display:flex; gap:8px; margin-top:8px;">
@@ -455,6 +460,17 @@ function renderizarTarjetas() {
 // ════════════════════════════════════════════════════════════════
 //  🗂️ HISTORIAL LOCAL DE PDFs GENERADOS
 // ════════════════════════════════════════════════════════════════
+
+
+// ── MEJORA 7: Ver fotos de la visita en Google Drive ─────────────
+// Abre Google Drive filtrado por el nombre del cliente y la fecha.
+function verFotosEnDrive(cliente, fechaVisita) {
+    // Construir query de búsqueda: carpeta del gimnasio en Drive
+    var query = encodeURIComponent(cliente.substring(0, 30));
+    // Abre Drive con búsqueda del nombre del gym
+    var driveUrl = 'https://drive.google.com/drive/search?q=' + query;
+    window.open(driveUrl, '_blank');
+}
 
 // ── Registrar PDF con base64 para previsualización ──────────────
 function registrarPDFGenerado(doc, base64, nombre) {

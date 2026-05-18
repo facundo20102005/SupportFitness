@@ -177,6 +177,17 @@
         </button>
         <div class="sync-status" id="status-sync-zonas"></div>
 
+        <!-- MEJORA 9: Exportar clientes a Excel -->
+        <button id="btn-exportar-clientes"
+                onclick="exportarClientesExcel()"
+                style="display:none; width:100%; margin:8px 0; padding:13px;
+                       background:linear-gradient(135deg,#0f9d58,#0b7a42); color:white;
+                       border:none; border-radius:12px; font-size:15px; font-weight:900;
+                       cursor:pointer; box-shadow:0 4px 14px rgba(15,157,88,0.35);
+                       display:flex; align-items:center; justify-content:center; gap:8px;">
+            📊 Exportar Clientes a Excel
+        </button>
+
         <!-- KPIs: fila 1 (siempre visibles) -->
         <div class="kpi-grid" id="kpi-box" style="display:none;">
             <div class="kpi-card">

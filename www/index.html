@@ -395,6 +395,7 @@
                                placeholder="Buscar gimnasio..."
                                oninput="filtrar(); actualizarProgress()"
                                onfocus="filtrar()"
+                               onblur="setTimeout(()=>_verificarRemitoGym(this.value.trim()), 200)"
                                autocomplete="off"
                                inputmode="search">
                     </div>
