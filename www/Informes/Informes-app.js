@@ -1670,44 +1670,67 @@ function abrirVistaPresupuesto(id, btnEl) {
 
 // ─────────────────────────────────────────────────────────────────
 //  📧 PREPARAR MAIL — abre Outlook Web Compose directamente
-//  No depende del cliente de correo del SO ni la cuenta default
+//  FIX: usa encodeURIComponent (no URLSearchParams) para evitar
+//  que los espacios se conviertan en "+" en Outlook Web.
+//  Templates exactos de Notas_SupportFitness.md
 // ─────────────────────────────────────────────────────────────────
+
+// Helper: construye URL de Outlook sin el bug del "+"
+function _urlOutlook(to, subject, body) {
+    const base = 'https://outlook.live.com/mail/0/deeplink/compose?';
+    const q = (to      ? 'to='      + encodeURIComponent(to)      + '&' : '') +
+              'subject=' + encodeURIComponent(subject) + '&' +
+              'body='    + encodeURIComponent(body);
+    return base + q;
+}
+
+const _FIRMA = [
+    '',
+    'Cordiales saludos.',
+    'Facundo Durán',
+    '',
+    'SUPPORT FITNESS',
+    'SERVICIO TÉCNICO PARA GIMNASIOS.',
+    'CEL. 11 6117-7878.'
+].join('\n');
+
 function prepararMail(id) {
     const doc = documentosGuardados.find(d => String(d.id) === String(id));
     if (!doc) return;
 
     const cliente = doc.cliente || '—';
-    const total   = Number(doc.total) || 0;
-    const fecha   = doc.fechaLimpia || doc.fecha || '—';
 
-    const asunto = 'Presupuesto Support Fitness — ' + cliente;
-    const cuerpo = [
-        'Buenas tardes, Señores de administración.',
-        '',
-        'Adjunto el presupuesto correspondiente al trabajo a realizar en sus instalaciones.',
-        '',
-        'Cliente: ' + cliente,
-        doc.cuit ? 'CUIT: ' + doc.cuit : null,
-        'Fecha: ' + fecha,
-        total > 0 ? 'Monto total: $' + total.toLocaleString('es-AR') : null,
-        '',
-        'Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago correspondiente.',
-        '',
-        'Por favor Confirmar recepción.',
-        '',
-        'Cordiales Saludos',
-        'Facundo Durán',
-        'SUPPORT FITNESS',
-        'Tel: +54 9 11 6117-7878  |  support_fitness@hotmail.com',
-        'Chile 1239, CP1098 - CABA  |  CUIT: 20-26285613-6'
-    ].filter(l => l !== null).join('\n');
+    // ── Elegir template según el modo activo ─────────────────────
+    let asunto, cuerpo;
 
-    // Outlook Web App — no abre el cliente del SO
-    const params = new URLSearchParams({
-        subject: asunto,
-        body:    cuerpo
-    });
-    window.open('https://outlook.live.com/mail/0/deeplink/compose?' + params.toString(), '_blank');
+    if (modoApp === 'presupuestos') {
+        // REPARACIÓN APROBADA — se envía con la factura del presupuesto aprobado
+        asunto = 'Factura Gimnasio - ' + cliente;
+        cuerpo = [
+            'Buenas tardes, Señores de Administración.',
+            '',
+            'Adjunto la factura por el presupuesto aprobado, así como los datos de la cuenta para realizar la transferencia a la brevedad, con el fin de avanzar en las reparaciones.',
+            '',
+            'Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago de la factura correspondiente.',
+            '',
+            'Por favor, confirmar recepción.',
+            _FIRMA
+        ].join('\n');
+
+    } else {
+        // REPARACIÓN / OFERTA — se envía el presupuesto para aprobación
+        asunto = 'Presupuesto Support Fitness - ' + cliente;
+        cuerpo = [
+            'Buenas tardes, Señores de administración.',
+            '',
+            'Adjunto presupuesto solicitado para realizar la reparación en el gimnasio. Esperamos su confirmación para hacerle su factura correspondiente.',
+            '',
+            'Por favor, confirmar recepción.',
+            _FIRMA
+        ].join('\n');
+    }
+
+    window.open(_urlOutlook('', asunto, cuerpo), '_blank');
 }
 
 
@@ -1814,6 +1837,110 @@ function editarDocumento(id) {
     document.getElementById('input-total-manual').value = doc.total;
     switchTab('crear');
     document.getElementById('titulo-form').innerText = modoApp === 'ofertas' ? "✏️ Modificando Oferta" : "✏️ Modificando Presupuesto";
+}
+
+// ════════════════════════════════════════════════════════════════
+//  🎨 SISTEMA DE MODALES PERSONALIZADOS
+//  Reemplaza confirm(), alert() y prompt() del navegador por modales
+//  con el diseño del sistema — sin el popup feo del sistema operativo.
+// ════════════════════════════════════════════════════════════════
+
+// ── Modal de confirmación (reemplaza confirm()) ──────────────────
+// Uso: const ok = await modalConfirmar({ titulo, mensaje, btnOk, btnCancel, icono, color })
+function modalConfirmar({ titulo = '¿Confirmar acción?', mensaje = '', btnOk = 'Confirmar',
+                           btnCancel = 'Cancelar', icono = '❓', color = '#1a73e8' } = {}) {
+    return new Promise(resolve => {
+        // Crear o reutilizar el modal
+        let overlay = document.getElementById('_modal-confirmar-custom');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = '_modal-confirmar-custom';
+            overlay.style.cssText = `
+                display:none; position:fixed; inset:0; z-index:99999;
+                background:rgba(0,0,0,0.55); align-items:center; justify-content:center;
+                padding:20px; backdrop-filter:blur(3px); animation:fadeIn 0.15s ease;`;
+            overlay.innerHTML = `
+                <div id="_mc-box" style="
+                    background:var(--inf-card,white); border-radius:20px;
+                    padding:30px 26px 24px; max-width:380px; width:100%;
+                    box-shadow:0 20px 60px rgba(0,0,0,0.3); animation:scaleIn 0.2s cubic-bezier(0.34,1.4,0.64,1);
+                    border:1px solid var(--inf-border,rgba(0,0,0,0.07));">
+                    <div id="_mc-icon" style="font-size:40px; text-align:center; margin-bottom:12px;"></div>
+                    <div id="_mc-titulo" style="font-size:18px; font-weight:900; text-align:center;
+                         margin-bottom:8px; color:var(--inf-text,#1d2939);"></div>
+                    <div id="_mc-msg" style="font-size:14px; color:var(--inf-sub,#475467); text-align:center;
+                         line-height:1.6; margin-bottom:22px; white-space:pre-wrap;"></div>
+                    <div style="display:flex; gap:10px;">
+                        <button id="_mc-btn-cancel"
+                            style="flex:1; padding:13px; border-radius:10px; border:1.5px solid var(--inf-border,#e0e0e0);
+                                   background:var(--inf-card,white); color:var(--inf-sub,#475467);
+                                   font-size:14px; font-weight:800; cursor:pointer; transition:all 0.2s;"></button>
+                        <button id="_mc-btn-ok"
+                            style="flex:1; padding:13px; border-radius:10px; border:none;
+                                   font-size:14px; font-weight:900; cursor:pointer; transition:all 0.2s;
+                                   box-shadow:0 4px 14px rgba(0,0,0,0.2);"></button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+        }
+
+        // Poblar contenido
+        document.getElementById('_mc-icon').innerText   = icono;
+        document.getElementById('_mc-titulo').innerText = titulo;
+        document.getElementById('_mc-msg').innerText    = mensaje;
+
+        const btnOkEl = document.getElementById('_mc-btn-ok');
+        const btnCnEl = document.getElementById('_mc-btn-cancel');
+        btnOkEl.innerText = btnOk;
+        btnCnEl.innerText = btnCancel;
+        btnOkEl.style.background = color;
+        btnOkEl.style.color      = 'white';
+        document.getElementById('_mc-titulo').style.color = color;
+
+        overlay.style.display = 'flex';
+        setTimeout(() => btnOkEl.focus(), 50);
+
+        // Handlers
+        const cleanup = (val) => {
+            overlay.style.display = 'none';
+            btnOkEl.onclick = null;
+            btnCnEl.onclick = null;
+            overlay.onclick = null;
+            resolve(val);
+        };
+        btnOkEl.onclick = () => cleanup(true);
+        btnCnEl.onclick = () => cleanup(false);
+        overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+    });
+}
+
+// ── Modal de alerta/aviso (reemplaza alert()) ────────────────────
+// Uso: await modalAviso({ titulo, mensaje, icono, color })
+function modalAviso({ titulo = 'Aviso', mensaje = '', icono = 'ℹ️',
+                       color = '#1a73e8', btnOk = 'Entendido' } = {}) {
+    return modalConfirmar({ titulo, mensaje, icono, color, btnOk, btnCancel: '' })
+        .then(() => {});  // ignora el resultado, siempre resolve
+}
+
+// Sobrescribir el botón de borrar historial para que use el modal propio
+function borrarHistorialPDFs() {
+    modalConfirmar({
+        titulo:    '¿Borrar historial?',
+        mensaje:   'Se eliminarán todos los PDFs guardados en este dispositivo.\nEsta acción no se puede deshacer.',
+        icono:     '🗑️',
+        color:     '#d93025',
+        btnOk:     'Borrar todo',
+        btnCancel: 'Cancelar'
+    }).then(ok => {
+        if (!ok) return;
+        localStorage.removeItem('historial_pdfs');
+        const lista = document.getElementById('lista-historial-pdfs');
+        if (lista) lista.innerHTML = `
+            <div style="text-align:center; padding:40px 20px; color:var(--inf-muted);">
+                <div style="font-size:36px; margin-bottom:10px;">📭</div>
+                <div style="font-weight:700;">Historial borrado.</div>
+            </div>`;
+    });
 }
 
 // Abre el modal personalizado en lugar del confirm() del navegador
@@ -2155,7 +2282,15 @@ async function eliminarPrecioHistorico(orden, desde) {
     const abono = listaAbonosBase.find(a => a.orden === orden);
     if (!abono) return;
  
-    if (!confirm(`¿Eliminar el precio registrado desde ${desde}?`)) return;
+    const ok = await modalConfirmar({
+        titulo:    'Eliminar precio',
+        mensaje:   `¿Borrar el precio registrado desde ${desde}?\n\nEl precio anterior volverá a aplicarse.`,
+        icono:     '🗑️',
+        color:     '#d93025',
+        btnOk:     'Eliminar',
+        btnCancel: 'Cancelar'
+    });
+    if (!ok) return;
  
     abono.preciosHistorial = (abono.preciosHistorial || []).filter(e => e.desde !== desde);
  
@@ -2185,11 +2320,11 @@ async function guardarAumentoPrecio(orden) {
  
     // Validar formato MM/YYYY
     if (!/^\d{2}\/\d{4}$/.test(desde)) {
-        alert('El mes debe tener el formato MM/YYYY, por ejemplo: 07/2025');
+        await modalAviso({ titulo: 'Formato incorrecto', mensaje: 'El mes debe tener el formato MM/YYYY.\nEjemplo: 07/2025', icono: '⚠️', color: '#f59e0b' }); return;
         return;
     }
     if (!precio || isNaN(precio) || precio <= 0) {
-        alert('Ingresá un precio válido mayor a 0.');
+        await modalAviso({ titulo: 'Precio inválido', mensaje: 'Ingresá un precio válido mayor a cero.', icono: '⚠️', color: '#f59e0b' }); return;
         return;
     }
  
@@ -2469,74 +2604,91 @@ function guardarFacturaAbono(orden, idMes) {
     .catch(() => mostrarMensaje('❌ Error de red al guardar', 'error'));
 }
 
-// ════════════════════════════════════════════════════════════
-//  📧 ENVIAR CORREO DE ABONO AUTOMÁTICAMENTE (via Backend MailApp)
-//  Llama al servidor Google Apps Script que usa MailApp para
-//  enviar el correo directamente sin abrir ningún cliente de correo.
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+//  📧 ABRIR CORREO DE ABONO EN OUTLOOK WEB (prellenado)
+//  Template exacto de Notas_SupportFitness.md — Facturación mensual
+// ════════════════════════════════════════════════════════════════
 async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, precio, factura) {
-    // Leer correos del textarea (puede haber sido editado manualmente)
-    const txtArea    = document.getElementById('txt-mail-' + orden);
-    const correos    = txtArea ? txtArea.value.trim() : '';
-
-    if (!correos) {
-        mostrarMensaje('⚠️ No hay correo cargado para este cliente. Completá el campo de mails.', 'error');
-        return;
-    }
-
-    const abono   = listaAbonosBase.find(a => String(a.orden) === String(orden)) || {};
+    const txtArea   = document.getElementById('txt-mail-' + orden);
+    const correos   = txtArea ? txtArea.value.trim() : '';
     const precioFmt = '$' + Math.round(precio).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    const anio    = new Date().getFullYear();
+    const anio      = new Date().getFullYear();
 
-    // Confirmación antes de enviar
-    const confirmar = confirm(
-        `¿Enviar correo automáticamente?\n\n` +
-        `📧 Para: ${correos}\n` +
-        `🏋️ Cliente: ${gimnasio}\n` +
-        `📅 Periodo: ${periodo} ${anio}\n` +
-        `📄 Factura: ${factura || '(sin número)'}\n` +
-        `💰 Importe: ${precioFmt}\n\n` +
-        `El correo se enviará desde la cuenta de Google del script.`
-    );
-    if (!confirmar) return;
+    const ok = await modalConfirmar({
+        titulo:    '📧 Preparar correo de facturación',
+        mensaje:   'Se abrirá Outlook Web con el correo prellenado.\n\n' +
+                   '🏋\ufe0f Cliente: ' + gimnasio + '\n' +
+                   '📅 Periodo: ' + periodo + ' ' + anio + '\n' +
+                   (factura ? '📄 Factura: ' + factura + '\n' : '') +
+                   '💰 Importe: ' + precioFmt +
+                   (correos ? '\n📧 Para: ' + correos : '\n⚠\ufe0f Sin correo — podés editarlo en Outlook'),
+        icono:     '📬',
+        color:     '#0f9d58',
+        btnOk:     'Abrir Outlook',
+        btnCancel: 'Cancelar'
+    });
+    if (!ok) return;
 
-    // Feedback visual
-    const btn = event?.currentTarget;
-    if (btn) {
-        btn.disabled  = true;
-        btn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;"></span>Enviando...</span>';
-    }
+    // Template FACTURACIÓN MENSUAL exacto de Notas_SupportFitness.md
+    const asunto = 'Factura Gimnasio - ' + gimnasio;
+    const cuerpo = [
+        'Buenas tardes, Señores de administración.',
+        '',
+        'Adjunto factura por el mantenimiento preventivo del Gimnasio periodo ' + periodo + ' ' + anio + ' y número de cuenta para realizar transferencia a la brevedad.',
+        '',
+        'Por favor, confirmar recepción.',
+        _FIRMA
+    ].join('\n');
 
-    try {
-        const result = await llamarAPI({
-            accion: 'enviarCorreoAbono',
-            payload: {
-                orden,
-                mesAnio:        idMes,
-                gimnasio,
-                periodo:        periodo + ' ' + anio,
-                factura,
-                precio,
-                correoCliente:  correos
-            }
-        });
-
-        if (result && result.ok) {
-            mostrarMensaje(`✅ Correo enviado a: ${correos}`, 'exito');
-            // Marcar como enviado automáticamente
-            await marcarComoEnviado(orden, idMes);
-        } else {
-            mostrarMensaje('❌ Error al enviar: ' + (result?.error || 'Error desconocido'), 'error');
-        }
-    } catch(e) {
-        mostrarMensaje('❌ Error de conexión: ' + e.message, 'error');
-    } finally {
-        if (btn) {
-            btn.disabled  = false;
-            btn.innerHTML = '📧 Enviar Correo';
-        }
-    }
+    window.open(_urlOutlook(correos, asunto, cuerpo), '_blank');
 }
+
+async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, precio, factura) {
+    const txtArea   = document.getElementById('txt-mail-' + orden);
+    const correos   = txtArea ? txtArea.value.trim() : '';
+    const precioFmt = '$' + Math.round(precio).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const anio      = new Date().getFullYear();
+
+    const ok = await modalConfirmar({
+        titulo:    '📧 Preparar correo de abono',
+        mensaje:   'Se abrirá Outlook Web con el correo prellenado.\n\n' +
+                   '🏋️ Cliente: ' + gimnasio + '\n' +
+                   '📅 Periodo: ' + periodo + ' ' + anio + '\n' +
+                   (factura ? '📄 Factura: ' + factura + '\n' : '') +
+                   '💰 Importe: ' + precioFmt +
+                   (correos ? '\n📧 Para: ' + correos : '\n⚠️ Sin correo — podés editarlo en Outlook'),
+        icono:     '📬',
+        color:     '#0f9d58',
+        btnOk:     'Abrir Outlook',
+        btnCancel: 'Cancelar'
+    });
+    if (!ok) return;
+
+    const asunto = 'Factura Gimnasio - ' + gimnasio;
+    const cuerpo = [
+        'Buenas tardes, Señores de administración.',
+        '',
+        'Adjunto la factura por el mantenimiento preventivo correspondiente al periodo ' + periodo + ' ' + anio + '.',
+        factura ? 'Factura N°: ' + factura : '',
+        'Importe: ' + precioFmt,
+        '',
+        'Junto con los datos de cuenta para realizar la transferencia a la brevedad.',
+        '',
+        'Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago correspondiente.',
+        '',
+        'Por favor Confirmar recepción.',
+        '',
+        'Cordiales Saludos',
+        'Facundo Durán',
+        'SUPPORT FITNESS',
+        'Tel: +54 9 11 6117-7878  |  support_fitness@hotmail.com',
+        'Chile 1239, CP1098 - CABA  |  CUIT: 20-26285613-6'
+    ].filter(Boolean).join('\n');
+
+    window.open(_urlOutlook(correos, asunto, cuerpo), '_blank');
+}
+
 
 function marcarComoEnviado(orden, idMes) {
     let mesIdx = parseInt(idMes.split("/")[0], 10) - 1;
@@ -2576,14 +2728,19 @@ function toggleDarkMode() {
     document.getElementById('btn-dark-mode').innerText = isDark ? '☀️' : '🌙';
 }
 // ─── NUEVA FUNCIÓN INTERNA PARA ENVIAR CORREO DESDE EL PANEL DE INFORMES ───
-function enviarMailRapidoAbono(orden, idMes) {
-    // Buscamos los datos del abono correspondiente en tu lista de memoria
+async function enviarMailRapidoAbono(orden, idMes) {
     const abono = listaAbonosBase.find(a => a.orden === parseInt(orden, 10)) || {};
     const gimnasioNombre = abono.gimnasio || "Cliente";
-    
-    if(!confirm(`¿Querés enviar el correo predeterminado de Facturación a ${gimnasioNombre} para el periodo ${idMes}?`)) {
-        return;
-    }
+
+    const ok = await modalConfirmar({
+        titulo:    'Enviar correo de facturación',
+        mensaje:   `¿Enviar el correo de facturación a:\n${gimnasioNombre}\nPeriodo: ${idMes}?`,
+        icono:     '📧',
+        color:     '#1a73e8',
+        btnOk:     'Enviar',
+        btnCancel: 'Cancelar'
+    });
+    if (!ok) return;
 
     mostrarMensaje('⏳ Enviando correo electrónico...', 'info');
 
