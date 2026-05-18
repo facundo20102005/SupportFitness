@@ -1589,3 +1589,172 @@ body.dark-mode [style*="color: #444"] { color: #94a3b8 !important; }
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   FASE 2 — Clases utilitarias (reemplazan inline styles)
+   Uso: class="inf-badge inf-badge--verde" etc.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Tipografía ─────────────────────────────────────────────── */
+.inf-text-muted  { font-size:11px; font-weight:700; color:#5f6368; }
+.inf-text-small  { font-size:12px; color:#475467; }
+.inf-text-label  { font-size:11px; font-weight:800; text-transform:uppercase;
+                   letter-spacing:0.4px; color:#5f6368; }
+.inf-text-mono   { font-family:'Courier New', monospace; font-size:12px; }
+
+/* ── Flexbox helpers ────────────────────────────────────────── */
+.inf-flex        { display:flex; align-items:center; }
+.inf-flex-gap    { display:flex; align-items:center; gap:8px; }
+.inf-flex-between{ display:flex; align-items:center; justify-content:space-between; }
+.inf-flex-center { display:flex; align-items:center; justify-content:center; }
+.inf-flex-col    { display:flex; flex-direction:column; }
+.inf-flex-1      { flex:1; min-width:0; }
+.inf-flex-wrap   { flex-wrap:wrap; }
+
+/* ── Badges de estado ───────────────────────────────────────── */
+.inf-badge {
+    display:inline-flex; align-items:center;
+    padding:3px 9px; border-radius:20px;
+    font-size:11px; font-weight:800; white-space:nowrap;
+}
+.inf-badge--verde   { background:#e6f4ea; color:#137333; }
+.inf-badge--rojo    { background:#fce8e6; color:#c5221f; }
+.inf-badge--azul    { background:#e8f0fe; color:#1a73e8; }
+.inf-badge--gris    { background:#f1f3f4; color:#5f6368; }
+.inf-badge--naranja { background:#fef3e2; color:#ea8600; }
+.inf-badge--violeta { background:#f0ebff; color:#6d28d9; }
+
+/* ── Botones de acción en tarjetas ─────────────────────────── */
+.inf-btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 16px; border:none; border-radius:10px;
+    font-size:13px; font-weight:900; cursor:pointer;
+    transition:all 0.18s; white-space:nowrap; min-height:40px;
+    -webkit-tap-highlight-color:transparent;
+}
+.inf-btn:active { transform:scale(0.97); }
+.inf-btn--primario { background:linear-gradient(135deg,#1a73e8,#1155cc); color:white;
+                     box-shadow:0 3px 10px rgba(26,115,232,0.35); }
+.inf-btn--verde    { background:linear-gradient(135deg,#0f9d58,#0b7a42); color:white;
+                     box-shadow:0 3px 10px rgba(15,157,88,0.35); }
+.inf-btn--rojo     { background:linear-gradient(135deg,#d93025,#b31c12); color:white;
+                     box-shadow:0 3px 10px rgba(217,48,37,0.3); }
+.inf-btn--gris     { background:#f1f3f5; color:#3c4043; border:1.5px solid #e0e0e0; }
+.inf-btn--violeta  { background:linear-gradient(135deg,#7c3aed,#6d28d9); color:white;
+                     box-shadow:0 3px 10px rgba(124,58,237,0.35); }
+.inf-btn--full     { width:100%; }
+.inf-btn--sm       { padding:7px 12px; font-size:12px; min-height:32px; }
+
+/* ── Cards / contenedores ───────────────────────────────────── */
+.inf-card-inner {
+    background:var(--inf-bg,#0f172a);
+    border:1px solid var(--inf-border,rgba(255,255,255,0.06));
+    border-radius:14px; padding:16px;
+}
+
+/* ── Vacío / placeholder ────────────────────────────────────── */
+.inf-empty {
+    text-align:center; padding:40px 20px; color:var(--inf-muted,#94a3b8);
+}
+.inf-empty__icon { font-size:36px; margin-bottom:10px; }
+.inf-empty__text { font-weight:700; font-size:15px; }
+.inf-empty__sub  { font-size:13px; margin-top:4px; opacity:0.7; }
+
+/* ── Filas info ─────────────────────────────────────────────── */
+.inf-info-row {
+    display:flex; justify-content:space-between; align-items:baseline;
+    gap:10px; flex-wrap:wrap; margin-bottom:4px;
+}
+.inf-info-label { font-size:12px; font-weight:700; color:var(--inf-sub,#94a3b8); }
+.inf-info-val   { font-size:13px; font-weight:900; color:var(--inf-text,#f1f5f9); }
+
+/* ── Grid de acciones (2 botones lado a lado) ───────────────── */
+.inf-actions-grid {
+    display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;
+}
+.inf-actions-grid--3 { grid-template-columns:1fr 1fr 1fr; }
+
+@media (max-width:480px) {
+    .inf-actions-grid, .inf-actions-grid--3 {
+        grid-template-columns:1fr;
+    }
+}
+
+/* ── Spinner de carga inline ─────────────────────────────────── */
+.inf-spinner {
+    display:inline-block; width:16px; height:16px;
+    border:2px solid rgba(255,255,255,0.35);
+    border-top-color:white; border-radius:50%;
+    animation:spin 0.7s linear infinite;
+    vertical-align:middle;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   FASE 3 — Mobile UX improvements
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Touch targets mínimos (WCAG 2.5.5: 44×44px) ──────────────── */
+@media (max-width: 768px) {
+    button, .btn-enviar, .btn-copiar, .btn-mini,
+    .inf-btn, .abono-actions button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Inputs más grandes en mobile */
+    input[type="text"], input[type="number"],
+    input[type="email"], select, textarea {
+        font-size: 16px !important; /* Evita zoom automático en iOS */
+        min-height: 44px;
+        padding: 10px 14px !important;
+    }
+
+    /* Cards de abonos más separadas para no tocar la equivocada */
+    .abono-card { margin-bottom: 12px !important; }
+
+    /* Chips de mes — más grandes en touch */
+    .mes-chip {
+        padding: 8px 16px !important;
+        font-size: 13px !important;
+        min-height: 38px;
+    }
+
+    /* Paginación full-width en mobile */
+    .inf-pagination { flex-direction: column; gap: 8px; }
+    .inf-pagination button { width: 100%; justify-content: center; }
+}
+
+/* ── Prevenir zoom en inputs iOS (font-size < 16px dispara zoom) ─ */
+@supports (-webkit-touch-callout: none) {
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* ── Feedback táctil — active state más visible en touch ────────── */
+@media (hover: none) {
+    button:active, .inf-btn:active {
+        transform: scale(0.96) !important;
+        opacity: 0.88;
+    }
+}
+
+/* ── Skeleton loader para listas ────────────────────────────────── */
+.inf-skeleton {
+    background: linear-gradient(90deg, 
+        var(--inf-border, rgba(255,255,255,0.06)) 25%, 
+        var(--inf-card, rgba(255,255,255,0.04)) 50%, 
+        var(--inf-border, rgba(255,255,255,0.06)) 75%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.4s infinite;
+    border-radius: 10px;
+}
+@keyframes skeletonShimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+.inf-skeleton-line { height: 14px; margin-bottom: 8px; border-radius: 6px; }
+.inf-skeleton-line--short { width: 40%; }
+.inf-skeleton-line--medium { width: 70%; }
+.inf-skeleton-line--full { width: 100%; }

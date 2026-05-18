@@ -8,7 +8,12 @@
     <link rel="icon" href="../assets/logo.jpeg">
     <link rel="stylesheet" href="../style.css">
     <script src="../nav.js"></script>
-    <script src="Informes-app.js" defer></script>
+    <!-- ══ Módulos de la app (cargar en orden) ══════════════════ -->
+    <script src="inf-config.js"></script>    <!-- Constantes, API_URL, precios   -->
+    <script src="inf-api.js"></script>       <!-- llamarAPI, auth, obtenerDolar   -->
+    <script src="inf-ui.js"></script>        <!-- setModoApp, burbuja, cargarApp  -->
+    <script src="inf-docs.js"></script>      <!-- docs, items, PDF, modales       -->
+    <script src="inf-abonos.js" defer></script> <!-- abonos mensuales            -->
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -968,7 +973,7 @@
 
                     <input id="buscador-global" type="text"
                            placeholder="Buscar por nombre, CUIT, N° factura..."
-                           oninput="renderizarTarjetas()">
+                           oninput="_debounceSearch(this.value)">
 
                     <div class="filtros-estado">
                         <button class="btn-filtro-estado" id="filtro-pendiente" onclick="setFiltroPago('pendiente')">🔴 Pendientes</button>
@@ -1102,6 +1107,16 @@
             document.getElementById('modal-img-preview-src').src = url;
             document.getElementById('modal-img-preview').classList.add('open');
         };
+    </script>
+
+    <!-- Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .catch(() => {});
+        });
+      }
     </script>
 </body>
 </html>
