@@ -133,7 +133,6 @@ async function obtenerDolar() {
         valorDolarOficial = mejor.valor;
 
         // Log para depuración en consola
-        console.log(`💱 Dólar oficial: $${valorDolarOficial} (fuente: ${mejor.fuente})`);
         console.table(exitosos.map(e => ({ fuente: e.fuente.split('/')[2], valor: e.valor })));
 
         // Guardar en localStorage con timestamp
@@ -309,7 +308,7 @@ async function cargarAppInformes() {
         localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
     } catch(e) {
         // Mostrar banner de error de conexión (no bloquear la app)
-        console.warn("Error cargando abonos base:", e.message);
+        // [debug removed] console.warn("Error cargando abonos base:",...)
         mostrarBannerConexion(e.message);
     }
 
@@ -321,7 +320,7 @@ async function cargarAppInformes() {
     if (document.getElementById('selector-mes-abono')) document.getElementById('selector-mes-abono').value = `${yyyy}-${mm}`;
 
     await cargarDatosBase().catch(e => {
-        console.warn("Error en cargarDatosBase:", e.message);
+        // [debug removed] console.warn("Error en cargarDatosBase:", e...)
     });
 }
 
@@ -399,15 +398,16 @@ async function llamarAPI(accionObj) {
             redirect: "follow"
         });
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(`El servidor respondió con error ${response.status}. Intentá de nuevo en unos segundos.`);
         }
         const result = await response.json();
         if (result.status === "success") return result.data;
-        else throw new Error(result.message || "El script devolvió un error sin mensaje.");
+        // Error del script de Google — mostrar mensaje amigable
+        const msg = result.message || "Error desconocido del servidor.";
+        throw new Error(msg.includes("Exception") ? "Error interno del servidor. Contactá al administrador." : msg);
     } catch (error) {
-        // Mejorar el mensaje de error para que sea más diagnóstico
-        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-            throw new Error("Sin conexión al servidor. Verificá:\n1) Que el script esté desplegado como 'Cualquier persona'\n2) Que la URL en API_URL use /exec (no /dev)\n3) Tu conexión a internet.");
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError") || error.message.includes("ERR_")) {
+            throw new Error("Sin conexión. Verificá tu internet e intentá de nuevo.");
         }
         throw error;
     }
@@ -1084,7 +1084,7 @@ async function guardarDocumento() {
         setTimeout(() => switchTab('creados'), 1500);
     } catch (e) {
         const msg = e?.message || String(e) || 'Error desconocido';
-        console.error('guardarDocumento error:', e);
+        // [debug removed] console.error('guardarDocumento error:', e...)
         mostrarMensaje('❌ Error de conexión: ' + msg + '\n(Verificá tu internet y que el script de Google esté activo)', 'error');
     } finally { btn.disabled = false; }
 }
@@ -1659,7 +1659,7 @@ function abrirVistaPresupuesto(id, btnEl) {
             mostrarMensaje(`✅ PDF descargado: ${result.nombre}`, 'exito');
         })
         .catch(err => {
-            console.error('PDF error:', err);
+        // [debug removed] console.error('PDF error:', err...)
             mostrarMensaje('❌ Error al generar PDF: ' + err.message, 'error');
         })
         .finally(() => {
@@ -1699,38 +1699,30 @@ function prepararMail(id) {
     if (!doc) return;
 
     const cliente = doc.cliente || '—';
-
-    // ── Elegir template según el modo activo ─────────────────────
-    let asunto, cuerpo;
+    let asunto, htmlBody;
 
     if (modoApp === 'presupuestos') {
-        // REPARACIÓN APROBADA — se envía con la factura del presupuesto aprobado
-        asunto = 'Factura Gimnasio - ' + cliente;
-        cuerpo = [
-            'Buenas tardes, Señores de Administración.',
-            '',
-            'Adjunto la factura por el presupuesto aprobado, así como los datos de la cuenta para realizar la transferencia a la brevedad, con el fin de avanzar en las reparaciones.',
-            '',
-            'Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago de la factura correspondiente.',
-            '',
-            'Por favor, confirmar recepción.',
-            _FIRMA
-        ].join('\n');
-
+        // ── REPARACIÓN APROBADA ───────────────────────────────────
+        asunto   = 'Factura Gimnasio - ' + cliente;
+        htmlBody = _wrapHTML(
+            _p('Buenas tardes, Señores de Administración.') + _br() +
+            _p('Adjunto la factura por el presupuesto aprobado, así como los datos de la cuenta para realizar la transferencia a la brevedad, con el fin de avanzar en las reparaciones.') + _br() +
+            _p('Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago de la factura correspondiente.') +
+            _POR_FAVOR +
+            _FIRMA_HTML
+        );
     } else {
-        // REPARACIÓN / OFERTA — se envía el presupuesto para aprobación
-        asunto = 'Presupuesto Support Fitness - ' + cliente;
-        cuerpo = [
-            'Buenas tardes, Señores de administración.',
-            '',
-            'Adjunto presupuesto solicitado para realizar la reparación en el gimnasio. Esperamos su confirmación para hacerle su factura correspondiente.',
-            '',
-            'Por favor, confirmar recepción.',
-            _FIRMA
-        ].join('\n');
+        // ── REPARACIÓN / OFERTA ───────────────────────────────────
+        asunto   = 'Presupuesto Support Fitness - ' + cliente;
+        htmlBody = _wrapHTML(
+            _p('Buenas tardes, Señores de administración.') + _br() +
+            _p('Adjunto presupuesto solicitado para realizar la reparación en el gimnasio. Esperamos su confirmación para hacerle su factura correspondiente.') +
+            _POR_FAVOR +
+            _FIRMA_HTML
+        );
     }
 
-    window.open(_urlOutlook('', asunto, cuerpo), '_blank');
+    window.open(_urlOutlook('', asunto, htmlBody), '_blank');
 }
 
 
@@ -2038,8 +2030,12 @@ async function confirmarSincronizacionARCA() {
 function setSectorAbono(sec) { sectorAbonoActual = sec; renderizarAbonos(); }
 
 async function cargarAbonos() {
-    listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
-    renderizarAbonos();
+    try {
+        listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
+        renderizarAbonos();
+    } catch(e) {
+        mostrarMensaje('No se pudo cargar la lista de abonos. Revisá la conexión.', 'error');
+    }
 }
 
 
@@ -2618,41 +2614,6 @@ async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, prec
     const ok = await modalConfirmar({
         titulo:    '📧 Preparar correo de facturación',
         mensaje:   'Se abrirá Outlook Web con el correo prellenado.\n\n' +
-                   '🏋\ufe0f Cliente: ' + gimnasio + '\n' +
-                   '📅 Periodo: ' + periodo + ' ' + anio + '\n' +
-                   (factura ? '📄 Factura: ' + factura + '\n' : '') +
-                   '💰 Importe: ' + precioFmt +
-                   (correos ? '\n📧 Para: ' + correos : '\n⚠\ufe0f Sin correo — podés editarlo en Outlook'),
-        icono:     '📬',
-        color:     '#0f9d58',
-        btnOk:     'Abrir Outlook',
-        btnCancel: 'Cancelar'
-    });
-    if (!ok) return;
-
-    // Template FACTURACIÓN MENSUAL exacto de Notas_SupportFitness.md
-    const asunto = 'Factura Gimnasio - ' + gimnasio;
-    const cuerpo = [
-        'Buenas tardes, Señores de administración.',
-        '',
-        'Adjunto factura por el mantenimiento preventivo del Gimnasio periodo ' + periodo + ' ' + anio + ' y número de cuenta para realizar transferencia a la brevedad.',
-        '',
-        'Por favor, confirmar recepción.',
-        _FIRMA
-    ].join('\n');
-
-    window.open(_urlOutlook(correos, asunto, cuerpo), '_blank');
-}
-
-async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, precio, factura) {
-    const txtArea   = document.getElementById('txt-mail-' + orden);
-    const correos   = txtArea ? txtArea.value.trim() : '';
-    const precioFmt = '$' + Math.round(precio).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    const anio      = new Date().getFullYear();
-
-    const ok = await modalConfirmar({
-        titulo:    '📧 Preparar correo de abono',
-        mensaje:   'Se abrirá Outlook Web con el correo prellenado.\n\n' +
                    '🏋️ Cliente: ' + gimnasio + '\n' +
                    '📅 Periodo: ' + periodo + ' ' + anio + '\n' +
                    (factura ? '📄 Factura: ' + factura + '\n' : '') +
@@ -2665,28 +2626,19 @@ async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, prec
     });
     if (!ok) return;
 
-    const asunto = 'Factura Gimnasio - ' + gimnasio;
-    const cuerpo = [
-        'Buenas tardes, Señores de administración.',
-        '',
-        'Adjunto la factura por el mantenimiento preventivo correspondiente al periodo ' + periodo + ' ' + anio + '.',
-        factura ? 'Factura N°: ' + factura : '',
-        'Importe: ' + precioFmt,
-        '',
-        'Junto con los datos de cuenta para realizar la transferencia a la brevedad.',
-        '',
-        'Las reparaciones quedarán confirmadas una vez se envíe el comprobante de pago correspondiente.',
-        '',
-        'Por favor Confirmar recepción.',
-        '',
-        'Cordiales Saludos',
-        'Facundo Durán',
-        'SUPPORT FITNESS',
-        'Tel: +54 9 11 6117-7878  |  support_fitness@hotmail.com',
-        'Chile 1239, CP1098 - CABA  |  CUIT: 20-26285613-6'
-    ].filter(Boolean).join('\n');
+    // ── Template FACTURACIÓN MENSUAL con formato HTML ─────────────
+    const asunto   = 'Factura Gimnasio - ' + gimnasio;
+    const htmlBody = _wrapHTML(
+        _p('Buenas tardes, Señores de administración.') + _br() +
+        _p('Adjunto factura por el mantenimiento preventivo del Gimnasio periodo ' + periodo + ' ' + anio +
+           ' y número de cuenta para realizar transferencia a la brevedad.') +
+        (factura ? _br() + _p('<strong>Factura N°:</strong> ' + factura) : '') +
+        _br() +
+        _POR_FAVOR +
+        _FIRMA_HTML
+    );
 
-    window.open(_urlOutlook(correos, asunto, cuerpo), '_blank');
+    window.open(_urlOutlook(correos, asunto, htmlBody), '_blank');
 }
 
 
@@ -2729,39 +2681,43 @@ function toggleDarkMode() {
 }
 // ─── NUEVA FUNCIÓN INTERNA PARA ENVIAR CORREO DESDE EL PANEL DE INFORMES ───
 async function enviarMailRapidoAbono(orden, idMes) {
-    const abono = listaAbonosBase.find(a => a.orden === parseInt(orden, 10)) || {};
-    const gimnasioNombre = abono.gimnasio || "Cliente";
+    try {
+        const abono = listaAbonosBase.find(a => a.orden === parseInt(orden, 10)) || {};
+        const gimnasioNombre = abono.gimnasio || "Cliente";
 
-    const ok = await modalConfirmar({
-        titulo:    'Enviar correo de facturación',
-        mensaje:   `¿Enviar el correo de facturación a:\n${gimnasioNombre}\nPeriodo: ${idMes}?`,
-        icono:     '📧',
-        color:     '#1a73e8',
-        btnOk:     'Enviar',
-        btnCancel: 'Cancelar'
-    });
-    if (!ok) return;
+        const ok = await modalConfirmar({
+            titulo:    'Enviar correo de facturación',
+            mensaje:   `¿Enviar el correo de facturación a:\n${gimnasioNombre}\nPeriodo: ${idMes}?`,
+            icono:     '📧',
+            color:     '#1a73e8',
+            btnOk:     'Enviar',
+            btnCancel: 'Cancelar'
+        });
+        if (!ok) return;
 
-    mostrarMensaje('⏳ Enviando correo electrónico...', 'info');
+        mostrarMensaje('⏳ Enviando correo electrónico...', 'info');
 
-    // Llamada directa a tu API de Google Apps Script
-    llamarAPI({ 
-        accion: "enviarCorreoAbono", 
-        payload: { 
-            orden: orden,
-            mesAnio: idMes, 
-            gimnasio: gimnasioNombre,
-            correoCliente: "support_fitness@hotmail.com" // <-- CAMBIAR ACÁ por el correo real si lo tenés guardado en el abono
-        } 
-    })
-    .then(respuesta => {
-        if(respuesta.ok) {
-            mostrarMensaje('✅ Correo enviado correctamente', 'success');
-            // Opcionalmente pintás el casillero para indicar que ya fue enviado
-            marcarComoEnviado(orden, idMes); 
-        } else {
-            mostrarMensaje('❌ Error al enviar: ' + respuesta.error, 'error');
-        }
-    })
-    .catch(() => mostrarMensaje('❌ Error de conexión con el Servidor', 'error'));
+        // Llamada directa a tu API de Google Apps Script
+        llamarAPI({ 
+            accion: "enviarCorreoAbono", 
+            payload: { 
+                orden: orden,
+                mesAnio: idMes, 
+                gimnasio: gimnasioNombre,
+                correoCliente: "support_fitness@hotmail.com" // <-- CAMBIAR ACÁ por el correo real si lo tenés guardado en el abono
+            } 
+        })
+        .then(respuesta => {
+            if(respuesta.ok) {
+                mostrarMensaje('✅ Correo enviado correctamente', 'success');
+                // Opcionalmente pintás el casillero para indicar que ya fue enviado
+                marcarComoEnviado(orden, idMes); 
+            } else {
+                mostrarMensaje('❌ Error al enviar: ' + respuesta.error, 'error');
+            }
+        })
+        .catch(() => mostrarMensaje('❌ Error de conexión con el Servidor', 'error'));
+    } catch(e) {
+        mostrarMensaje('Error al preparar el correo. Intentá de nuevo.', 'error');
+    }
 }
