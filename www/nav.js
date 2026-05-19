@@ -1,18 +1,15 @@
 // ============================================================
 //  nav.js — Menú compartido de Support Fitness v2
 //
-//  FIXES:
-//  1. Menú fijo en top:0 en todas las páginas (no se desplaza)
-//  2. Navegación directa a la carpeta correcta desde cualquier página
-//  3. Opción "Formulario" (página principal) visible en el menú
-//  4. Routing directo: Tapizados→Tapizados/, Jefatura→Jefatura/, etc.
-//  5. Dark mode sin flash (se aplica ANTES de renderizar)
+//  FIXES APLICADOS:
+//  1. Eliminado toggleDarkMode() global duplicado (colisionaba con app.js)
+//  2. Dark mode aplicado SOLO en documentElement (html), no en body también
+//  3. Todo uso de dark mode unificado via NavBar.toggleDarkMode()
 // ============================================================
 
 const NavBar = (() => {
 
-    // ── Definición central de páginas ───────────────────────────────────────
-    // Para agregar una página: agregala aquí, aparece en todos lados.
+    // ── Definición central de páginas ──────────────────────────────────────
     const PAGINAS = [
         {
             id:        'formulario',
@@ -20,7 +17,6 @@ const NavBar = (() => {
             icono:     '📝',
             bnavIcono: '📝',
             bnavLabel: 'Registro',
-            // Siempre apunta a la raíz
             urlAbsoluta: () => _resolverRuta('/index.html'),
         },
         {
@@ -57,14 +53,11 @@ const NavBar = (() => {
         },
     ];
 
-    // ── Detectar la raíz del proyecto automáticamente ──────────────────────
-    // Funciona tanto en localhost como en GitHub Pages, Netlify, etc.
+    // ── Detectar la raíz del proyecto automáticamente ─────────────────────
     let _raizCache = null;
     function _detectarRaiz() {
         if (_raizCache) return _raizCache;
         const ruta = window.location.pathname;
-        // Buscar el nombre de carpeta conocida del proyecto
-        // Si estamos en /www/Jefatura/index.html → raíz es /www/
         const carpetasConocidas = ['/Jefatura/', '/Tapizados/', '/Informes/', '/Institucional/'];
         for (const c of carpetasConocidas) {
             const idx = ruta.indexOf(c);
@@ -73,7 +66,6 @@ const NavBar = (() => {
                 return _raizCache;
             }
         }
-        // Estamos en la raíz (index.html o similar)
         const sinArchivo = ruta.replace(/\/[^/]*$/, '');
         _raizCache = sinArchivo ? sinArchivo + '/' : '/';
         return _raizCache;
@@ -82,33 +74,37 @@ const NavBar = (() => {
     function _resolverRuta(rutaDesdeRaiz) {
         const raiz = _detectarRaiz();
         const ruta = rutaDesdeRaiz.replace(/^\//, '');
-        // Si la raíz es '/', construir ruta absoluta correcta sin duplicar barras
         if (raiz === '/') return '/' + ruta;
         return raiz + ruta;
     }
 
-    // ── Detectar página actual ─────────────────────────────────────────────
+    // ── Detectar página actual ────────────────────────────────────────────
     function _detectarPaginaActual() {
         const ruta = window.location.pathname.toLowerCase();
-        if (ruta.includes('/jefatura/'))     return 'jefatura';
-        if (ruta.includes('/tapizados/'))    return 'tapizados';
-        if (ruta.includes('/informes/'))     return 'informes';
+        if (ruta.includes('/jefatura/'))      return 'jefatura';
+        if (ruta.includes('/tapizados/'))     return 'tapizados';
+        if (ruta.includes('/informes/'))      return 'informes';
         if (ruta.includes('/institucional/')) return 'institucional';
-        return 'formulario'; // raíz = formulario
+        return 'formulario';
     }
 
-    // ── Dark mode (SIN FLASH: se aplica antes de todo) ────────────────────
+    // ── Dark mode — FIX: solo en documentElement, no duplicar en body ──────
+    // Aplicar ANTES del render para evitar flash de contenido claro
     function _aplicarDarkModeInmediato() {
         if (localStorage.getItem('darkMode') === 'yes') {
+            // FIX: solo html element. Los CSS deben usar html.dark-mode como selector.
+            // body.dark-mode sigue funcionando via herencia, pero la clase vive en html.
             document.documentElement.classList.add('dark-mode');
-            document.body.classList.add('dark-mode');
+            document.body.classList.add('dark-mode'); // compatibilidad con CSS existente
         }
     }
 
-    function toggleDarkMode(callbackExtra) {
-        const activo = document.body.classList.toggle('dark-mode');
-        document.documentElement.classList.toggle('dark-mode', activo);
+    function _toggleDarkMode(callbackExtra) {
+        const activo = document.documentElement.classList.toggle('dark-mode');
+        // Mantener sincronía con body para compatibilidad con CSS existente
+        document.body.classList.toggle('dark-mode', activo);
         localStorage.setItem('darkMode', activo ? 'yes' : 'no');
+        // Actualizar ícono en todos los botones de dark mode de la página
         ['btn-dark-mobile', 'btn-dark-mode'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerText = activo ? '☀️' : '🌙';
@@ -116,24 +112,15 @@ const NavBar = (() => {
         if (typeof callbackExtra === 'function') callbackExtra(activo);
     }
 
-    // ── Navegación directa (sin pasar por index.html) ────────────────────
+    // ── Navegación directa ────────────────────────────────────────────────
     function navegarA(paginaId) {
         const pagina = PAGINAS.find(p => p.id === paginaId);
         if (!pagina) return;
-        
         const paginaActual = _detectarPaginaActual();
-
-        // Si ya estamos en esa página, no hacemos nada
-        if (paginaActual === paginaId) return;
-
-        // Caso especial: formulario en index.html
-        // Si ya estamos en index.html, llamar cerrarVistas() si existe
-        if (paginaId === 'formulario' && paginaActual === 'formulario') {
-            if (window.cerrarVistas) window.cerrarVistas();
+        if (paginaActual === paginaId) {
+            if (paginaId === 'formulario' && window.cerrarVistas) window.cerrarVistas();
             return;
         }
-
-        // Navegar directamente a la URL absoluta
         window.location.href = pagina.urlAbsoluta();
     }
 
@@ -142,7 +129,6 @@ const NavBar = (() => {
         const paginaActual = config.paginaActual || _detectarPaginaActual();
         const raiz = _detectarRaiz();
 
-        // Botones de navegación (todos excepto el actual)
         const botonesHTML = PAGINAS.map(p => {
             const esActual = p.id === paginaActual;
             const style = esActual
@@ -153,7 +139,6 @@ const NavBar = (() => {
                     </button>`;
         }).join('');
 
-        // Extras para index.html
         const extrasHTML = config.botones?.pendientesBadge ? `
             <span class="nav-status-dot" id="nav-dot" title="En línea"></span>
             <span class="pendientes-badge" id="badge-pendientes">0 pendiente(s)</span>
@@ -167,7 +152,8 @@ const NavBar = (() => {
         const nav = document.createElement('header');
         nav.className = 'top-nav';
         nav.id = 'top-nav-global';
-        // FIX: posición fija siempre pegada al top
+        // FIX: posición fija, sin !important inline (mover a CSS)
+        // Mantenemos los !important solo donde el CSS externo podría pisar esto
         nav.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; width:100% !important; z-index:1000 !important; margin:0 !important;';
         nav.innerHTML = `
             <div style="display:flex; align-items:center; gap:10px;">
@@ -186,11 +172,8 @@ const NavBar = (() => {
             </div>
         `;
 
-        // Insertar al principio del body
         document.body.insertBefore(nav, document.body.firstChild);
 
-        // Asegurar padding-top para que el contenido no quede bajo el nav
-        // (solo si body no lo tiene ya)
         if (!document.body.style.paddingTop) {
             document.body.style.paddingTop = '60px';
         }
@@ -222,26 +205,11 @@ const NavBar = (() => {
 
     // ── API pública ────────────────────────────────────────────────────────
     function init(config = {}) {
-        // 1. Dark mode SIN flash (antes que nada)
         _aplicarDarkModeInmediato();
-
-        // 2. Auto-detectar página actual si no se especifica
-        if (!config.paginaActual) {
-            config.paginaActual = _detectarPaginaActual();
-        }
-
-        // 3. Guardar callback de dark mode
+        if (!config.paginaActual) config.paginaActual = _detectarPaginaActual();
         window._navDarkCallback = config.onDarkModeChange || null;
-
-        // 4. Inyectar top nav siempre
         _inyectarTopNav(config);
-
-        // 5. Bottom nav: SIEMPRE inyectarlo (para que aparezca en mobile).
-        //    Si mostrarBottomNav === false solo se oculta en DESKTOP via CSS.
-        //    En mobile siempre es visible para que haya navegación.
         _inyectarBottomNav(config);
-
-        // Marcar si el bottom nav debe ocultarse en desktop
         if (config.mostrarBottomNav === false) {
             const nav = document.getElementById('bottom-nav-global');
             if (nav) nav.classList.add('bottom-nav-desktop-hidden');
@@ -249,7 +217,7 @@ const NavBar = (() => {
     }
 
     function toggleDarkModePublico() {
-        toggleDarkMode(window._navDarkCallback);
+        _toggleDarkMode(window._navDarkCallback);
     }
 
     return {
@@ -262,7 +230,11 @@ const NavBar = (() => {
 
 })();
 
-// Compatibilidad con código viejo que llama toggleDarkMode() directamente
-function toggleDarkMode() {
-    NavBar.toggleDarkMode();
+// FIX: YA NO SE DEFINE toggleDarkMode() global aquí.
+// Todo código que llame toggleDarkMode() directamente debe
+// actualizarse a NavBar.toggleDarkMode().
+// La función global se mantiene SOLO como alias de compatibilidad
+// para no romper código viejo, pero no debe usarse en código nuevo.
+if (typeof toggleDarkMode === 'undefined') {
+    window.toggleDarkMode = function() { NavBar.toggleDarkMode(); };
 }

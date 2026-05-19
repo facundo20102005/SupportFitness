@@ -1758,3 +1758,12 @@ body.dark-mode [style*="color: #444"] { color: #94a3b8 !important; }
 .inf-skeleton-line--short { width: 40%; }
 .inf-skeleton-line--medium { width: 70%; }
 .inf-skeleton-line--full { width: 100%; }
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes slideUp {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to   { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+}

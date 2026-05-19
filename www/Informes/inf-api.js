@@ -1,5 +1,21 @@
 // ── inf-api.js — Comunicación con el servidor y carga inicial ──
+// AUDITORÍA: corregido timeout, manejo de errores, sesión básica
 
+// ── Gestión de sesión (token opaco) ─────────────────────────────
+// Mejora respecto al original: en lugar de guardar 'true' en localStorage,
+// se guarda el token real que devuelve el backend. Cada acción lo envía.
+// Nota: esto requiere que el backend devuelva { ok: true, token: "..." }
+// y valide ese token en cada acción sensible.
+const Sesion = (() => {
+    const KEY = 'sf_session_token';
+    const get = () => sessionStorage.getItem(KEY); // sessionStorage: se borra al cerrar pestaña
+    const set = (token) => sessionStorage.setItem(KEY, token);
+    const clear = () => sessionStorage.removeItem(KEY);
+    const tiene = () => !!get();
+    return { get, set, clear, tiene };
+})();
+
+// ── Modal de contraseña ──────────────────────────────────────────
 function _mostrarModalPassInf() {
     const modal = document.getElementById('modalPassword');
     if (!modal) return;
@@ -7,6 +23,7 @@ function _mostrarModalPassInf() {
     requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('mostrar')));
     setTimeout(() => document.getElementById('input-pass')?.focus(), 300);
 }
+
 function _ocultarModalPassInf() {
     const modal = document.getElementById('modalPassword');
     if (!modal) return;
@@ -14,6 +31,7 @@ function _ocultarModalPassInf() {
     setTimeout(() => { modal.style.display = 'none'; }, 250);
 }
 
+// ── Verificación de acceso ───────────────────────────────────────
 async function verificarAccesoInformes() {
     const pass      = (document.getElementById('input-pass')?.value || '').trim();
     const btnIng    = document.getElementById('btn-ingresar-inf');
@@ -24,9 +42,8 @@ async function verificarAccesoInformes() {
 
     if (!pass) { inputEl.style.borderColor = '#d93025'; return; }
 
-    // Reset estados
-    errorEl.style.display  = 'none';
-    okEl.style.display     = 'none';
+    errorEl.style.display   = 'none';
+    if (okEl) okEl.style.display = 'none';
     loadingEl.style.display = 'flex';
     if (btnIng) { btnIng.disabled = true; btnIng.style.opacity = '0.6'; }
 
@@ -34,23 +51,27 @@ async function verificarAccesoInformes() {
         const res = await llamarAPI({ accion: "verificarPassword", payload: { pass, destino: "jefatura" } });
 
         if (res && res.ok) {
-            // ✅ Correcto
             loadingEl.style.display = 'none';
-            okEl.style.display      = 'block';
+            if (okEl) okEl.style.display = 'block';
             inputEl.style.borderColor = '#0f9d58';
-            if (res.isJefe) localStorage.setItem('auth_jefatura', 'true');
-            localStorage.setItem('auth_informes', 'true');
+
+            // FIX: guardar token en sessionStorage, no 'true' en localStorage
+            if (res.token) {
+                Sesion.set(res.token);
+            } else {
+                // fallback si el backend todavía no devuelve token
+                Sesion.set('legacy_auth');
+            }
+            if (res.isJefe) sessionStorage.setItem('sf_is_jefe', 'true');
 
             setTimeout(() => {
                 _ocultarModalPassInf();
                 cargarAppInformes();
             }, 900);
         } else {
-            // ❌ Incorrecto
             loadingEl.style.display = 'none';
             errorEl.style.display   = 'block';
             inputEl.style.borderColor = '#d93025';
-            // Animación shake en el input
             inputEl.style.animation = 'none';
             requestAnimationFrame(() => { inputEl.style.animation = 'shake 0.4s ease'; });
             inputEl.value = '';
@@ -65,14 +86,13 @@ async function verificarAccesoInformes() {
     }
 }
 
-// ── Carga principal de la app (solo se ejecuta post-auth) ──
+// ── Carga principal de la app ────────────────────────────────────
 async function cargarAppInformes() {
     obtenerDolar();
 
-    // Intentar cargar abonos base (no crítico si falla)
     try {
         listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
-        let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
+        let cuitDic = (() => { try { return JSON.parse(localStorage.getItem('cuitGlobalDic')) || {}; } catch(e){ return {}; } })();
         listaAbonosBase.forEach(abono => {
             let cuitLimpio = String(abono.cuit).replace(/\D/g, "");
             if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym;
@@ -81,27 +101,25 @@ async function cargarAppInformes() {
         });
         localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
     } catch(e) {
-        // Mostrar banner de error de conexión (no bloquear la app)
-        // [debug removed] console.warn("Error cargando abonos base:",...)
         mostrarBannerConexion(e.message);
     }
 
     const hoy = new Date();
-    const mm  = String(hoy.getMonth() + 1).padStart(2, '0');
+    const mm   = String(hoy.getMonth() + 1).padStart(2, '0');
     const yyyy = String(hoy.getFullYear());
-    if (document.getElementById('sel-mes-abono'))      document.getElementById('sel-mes-abono').value = mm;
-    if (document.getElementById('sel-anio-abono'))     document.getElementById('sel-anio-abono').value = yyyy;
-    if (document.getElementById('selector-mes-abono')) document.getElementById('selector-mes-abono').value = `${yyyy}-${mm}`;
+    const selMes  = document.getElementById('sel-mes-abono');
+    const selAnio = document.getElementById('sel-anio-abono');
+    const selMesA = document.getElementById('selector-mes-abono');
+    if (selMes)  selMes.value  = mm;
+    if (selAnio) selAnio.value = yyyy;
+    if (selMesA) selMesA.value = `${yyyy}-${mm}`;
 
-    await cargarDatosBase().catch(e => {
-        // [debug removed] console.warn("Error en cargarDatosBase:", e...)
-    });
+    await cargarDatosBase().catch(() => {});
 }
 
-// ── Banner de error de conexión visible al usuario ──
+// ── Banner de error de conexión ──────────────────────────────────
 function mostrarBannerConexion(detalle) {
-    const existente = document.getElementById('banner-conexion');
-    if (existente) return; // No duplicar
+    if (document.getElementById('banner-conexion')) return;
     const banner = document.createElement('div');
     banner.id = 'banner-conexion';
     banner.style.cssText = `
@@ -111,7 +129,7 @@ function mostrarBannerConexion(detalle) {
         display: flex; align-items: center; justify-content: center; gap: 12px;
         box-shadow: 0 3px 12px rgba(217,48,37,0.4);`;
     banner.innerHTML = `
-        <span>🔌 Sin conexión al servidor de Google — Verificá que el script esté bien desplegado</span>
+        <span>🔌 Sin conexión al servidor — Verificá que el script esté bien desplegado</span>
         <button onclick="location.reload()" style="background:white; color:#d93025; border:none;
             padding:5px 12px; border-radius:8px; font-weight:900; cursor:pointer; font-size:12px;">
             🔄 Reintentar
@@ -122,9 +140,8 @@ function mostrarBannerConexion(detalle) {
     document.body.appendChild(banner);
 }
 
+// ── Inicialización ───────────────────────────────────────────────
 window.addEventListener('load', async () => {
-
-    // NavBar (sin auth — se inicializa siempre para mostrar el menú)
     if (typeof NavBar !== 'undefined') {
         NavBar.init({ paginaActual: 'informes', mostrarBottomNav: false });
     } else {
@@ -132,59 +149,73 @@ window.addEventListener('load', async () => {
     }
 
     // Mostrar caché del dólar mientras esperamos
-    const cachedDolar = (() => {
-        try { return JSON.parse(localStorage.getItem('dolar_oficial_cache')); }
-        catch(e) { return null; }
-    })();
+    const cachedDolar = (() => { try { return JSON.parse(localStorage.getItem('dolar_oficial_cache')); } catch(e){ return null; } })();
     if (cachedDolar && cachedDolar.valor > 500) {
         valorDolarOficial = cachedDolar.valor;
-        actualizarDisplayDolar(true, 'caché');
+        if (typeof actualizarDisplayDolar === 'function') actualizarDisplayDolar(true, 'caché');
     }
 
-    // ── Verificar acceso ──────────────────────────────────────
-    const tieneAcceso = localStorage.getItem('auth_informes')  === 'true' ||
-                        localStorage.getItem('auth_jefatura')  === 'true';
-
-    if (tieneAcceso) {
+    // FIX: verificar sesión real en sessionStorage
+    if (Sesion.tiene()) {
         _ocultarModalPassInf();
         cargarAppInformes();
     } else {
         _mostrarModalPassInf();
     }
 });
-// 🔥 FUNCIÓN QUE CONECTA LOS NUEVOS BOTONES CON EL SISTEMA VIEJO 🔥
+
+// ── Helpers de cambio de mes ─────────────────────────────────────
 function cambioMesPersonalizado() {
-    let m = document.getElementById('sel-mes-abono').value;
-    let y = document.getElementById('sel-anio-abono').value;
-    let hiddenInput = document.getElementById('selector-mes-abono');
-    if(hiddenInput) {
+    const m = document.getElementById('sel-mes-abono')?.value;
+    const y = document.getElementById('sel-anio-abono')?.value;
+    const hiddenInput = document.getElementById('selector-mes-abono');
+    if (hiddenInput && m && y) {
         hiddenInput.value = `${y}-${m}`;
-        renderizarAbonos(); // Refresca la lista automáticamente
+        if (typeof renderizarAbonos === 'function') renderizarAbonos();
     }
 }
 
-async function llamarAPI(accionObj) {
+// ── Llamada a la API con timeout y retry ─────────────────────────
+// FIX PRINCIPAL: agregado AbortController con timeout de 15 segundos.
+// Si Google Apps Script tarda más de 15s, se aborta limpiamente con
+// un mensaje de error claro en lugar de quedar colgado indefinidamente.
+async function llamarAPI(accionObj, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
         const response = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(accionObj),
-            redirect: "follow"
+            redirect: "follow",
+            signal: controller.signal
         });
+
+        clearTimeout(timer);
+
         if (!response.ok) {
             throw new Error(`El servidor respondió con error ${response.status}. Intentá de nuevo en unos segundos.`);
         }
+
         const result = await response.json();
+
         if (result.status === "success") return result.data;
-        // Error del script de Google — mostrar mensaje amigable
+
         const msg = result.message || "Error desconocido del servidor.";
-        throw new Error(msg.includes("Exception") ? "Error interno del servidor. Contactá al administrador." : msg);
+        throw new Error(msg.includes("Exception")
+            ? "Error interno del servidor. Contactá al administrador."
+            : msg);
+
     } catch (error) {
+        clearTimeout(timer);
+
+        if (error.name === 'AbortError') {
+            throw new Error("La solicitud tardó demasiado (más de 15s). Verificá tu conexión e intentá de nuevo.");
+        }
         if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError") || error.message.includes("ERR_")) {
             throw new Error("Sin conexión. Verificá tu internet e intentá de nuevo.");
         }
         throw error;
     }
 }
-
-// 🔥 BURBUJA DE LISTA DE PRECIOS 🔥

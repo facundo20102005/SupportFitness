@@ -59,21 +59,28 @@ async function cargarDatosBase() {
 }
 
 // --- FUNCIÓN PUENTE (REEMPLAZA A google.script.run) ---
-async function llamarAPI(accionObj) {
+async function llamarAPI(accionObj, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         const response = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(accionObj),
-            redirect: "follow"
+            redirect: "follow",
+            signal: controller.signal
         });
+        clearTimeout(timer);
         const result = await response.json();
-        if (result.status === "success") { return result.data; } 
-        else { throw new Error(result.message); }
-    } catch (error) { 
-        console.error("Error API:", error); 
-        actualizarDotConexion(true); 
-        throw error; 
+        if (result.status === "success") return result.data;
+        throw new Error(result.message || "Error del servidor");
+    } catch (error) {
+        clearTimeout(timer);
+        actualizarDotConexion(true);
+        if (error.name === 'AbortError') {
+            throw new Error("La solicitud tardó demasiado (15s). Verificá tu conexión.");
+        }
+        throw error;
     }
 }
 
@@ -296,8 +303,7 @@ document.querySelectorAll('input[name="reparacion"]').forEach(radio => {
 
 let gimnasios = [
     "46 PLAZA PILAR (CAMAGNO)", "Administracion Barrio Privado la lomada", "Always Club 1 (Guatemala)", "Always Club 2 (Costa Rica)",
-    "Arcos Barrancas S.R.L. (Arcos 1539)", "ASOCIACION CIVIL EL YACHT NORDELTA", "Banco Galicia (Torre Leiva)", "BARRANCAS DEL LAGO",
-    "BARRANCOS DE LAGO", "BARRIO LA LOMADA PILAR", "BARRIO MI REFUGIO (Canning)", "BARRIOS LOS ALISOS", "CARMEL COUNTRY S.A.",
+    "Arcos Barrancas S.R.L. (Arcos 1539)", "ASOCIACION CIVIL EL YACHT NORDELTA", "Banco Galicia (Torre Leiva)", "BARRANCAS DEL LAGO","BARRIO LA LOMADA PILAR", "BARRIO MI REFUGIO (Canning)", "BARRIOS LOS ALISOS", "CARMEL COUNTRY S.A.",
     "CLUB ARMENIA (Pilar)", "CLUB DE CAMPO ARMENIA S A", "CLUB DEPORTIVO SANTA BARBARA S.A", "CLUB HIPICO ARGENTINO", "CLUB SANTA BARBARA",
     "CONS. DOZ PLAZAS (Torre 1)", "CONS. DOZ PLAZAS (Torre 2)", "CONS. PROP, CABALLITO NUEVO COLPAYO 760", "CONS. PROP. CABALLITO NUEVO FELIPE VALLES",
     "CONS. PROP. JUNCAL 3220/80 PARK", "CONS. PROP. JUNCAL 3220/80 PLAZA", "CONS.DE PROP. F.J. STA. MARIA DE ORO 2833", "CONS.DE PROP. UGARTECHE (SEGUI 3672)",
@@ -398,61 +404,104 @@ function seleccionar(valor) {
 }
 
 function _verificarRemitoGym(gymNombre) {
-    // Limpiar avisos anteriores
-    ['aviso-remito', 'aviso-oc'].forEach(function(id) {
-        var el = document.getElementById(id);
+    // Limpiar avisos anteriores (toast y aviso inline)
+    ['aviso-remito', 'aviso-oc', 'toast-remito'].forEach(id => {
+        const el = document.getElementById(id);
         if (el) el.remove();
     });
-
+ 
     if (!gymNombre || !gymNombre.trim()) return;
-    if (!window.listaAbonosGlobal || window.listaAbonosGlobal.length === 0) return;
-
-    var gymNorm = gymNombre.toLowerCase().normalize("NFD")
-                   .replace(/[\u0300-\u036f]/g, "").trim();
-
-    var abono = window.listaAbonosGlobal.find(function(a) {
-        var n = String(a.gym || "").toLowerCase().normalize("NFD")
-                 .replace(/[\u0300-\u036f]/g, "").trim();
-        // Coincidencia flexible: igual, uno contiene al otro, o similaridad parcial
-        return n === gymNorm ||
-               n.includes(gymNorm) ||
-               gymNorm.includes(n) ||
-               (gymNorm.length > 5 && n.split(' ').some(function(w) { return gymNorm.includes(w) && w.length > 4; }));
+ 
+    // Si los abonos todavía no cargaron, reintentar en 2 segundos
+    if (!window.listaAbonosGlobal || window.listaAbonosGlobal.length === 0) {
+        setTimeout(() => _verificarRemitoGym(gymNombre), 2000);
+        return;
+    }
+ 
+    const gymNorm = gymNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+ 
+    const abono = window.listaAbonosGlobal.find(a => {
+        const n = String(a.gym || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        return n === gymNorm || n.includes(gymNorm) || gymNorm.includes(n) ||
+               (gymNorm.length > 5 && n.split(' ').some(w => gymNorm.includes(w) && w.length > 4));
     });
-
-    if (!abono || !abono.pideRemito) return;
-
-    var aviso = document.createElement("div");
-    aviso.id = "aviso-remito";
-    aviso.style.cssText = [
-        "background:#fff3e0;",
-        "border-left:4px solid #ff9800;",
-        "border-radius:10px;",
-        "padding:14px 16px;",
-        "margin-top:12px;",
-        "display:flex;",
-        "align-items:flex-start;",
-        "gap:12px;"
-    ].join(" ");
-    aviso.innerHTML = [
-        "<span style='font-size:24px; flex-shrink:0;'>📋</span>",
-        "<div>",
-        "  <div style='font-weight:900; font-size:14px; color:#e65100; margin-bottom:5px;'>",
-        "    ⚠️ Este cliente requiere REMITO físico",
-        "  </div>",
-        "  <div style='font-size:13px; color:#bf360c; line-height:1.6;'>",
-        "    <strong>" + gymNombre + "</strong> exige remito firmado.<br>",
-        "    <strong><u>Recordá fotografiar y subir el remito antes de enviar.</u></strong>",
-        "  </div>",
-        "</div>"
-    ].join("");
-
-    // Insertar DENTRO de card-gimnasio, al final del card (ID estable, siempre existe)
-    var cardGim = document.getElementById("card-gimnasio");
-    if (cardGim) {
-        cardGim.appendChild(aviso);
+ 
+    if (!abono) return;
+ 
+    // ── Aviso inline (pequeño, debajo del buscador) ─────────
+    if (abono.pideRemito || abono.pideOC) {
+        const aviso = document.createElement("div");
+        aviso.id = "aviso-remito";
+        aviso.style.cssText = "background:#fff3e0; border-left:4px solid #ff9800; border-radius:10px; padding:14px 16px; margin-top:12px; display:flex; align-items:flex-start; gap:12px;";
+        let textoAviso = "";
+        if (abono.pideRemito) textoAviso += `<strong>${gymNombre}</strong> exige REMITO. Fotografialo antes de enviar.<br>`;
+        aviso.innerHTML = `
+            <span style="font-size:24px; flex-shrink:0;">📋</span>
+            <div>
+                <div style="font-weight:900; font-size:14px; color:#e65100; margin-bottom:5px;">⚠️ Documentación requerida</div>
+                <div style="font-size:13px; color:#bf360c; line-height:1.6;">${textoAviso}</div>
+            </div>`;
+        const cardGim = document.getElementById("card-gimnasio");
+        if (cardGim) cardGim.appendChild(aviso);
+    }
+ 
+    // ── TOAST prominente (solo si pide remito) ─────────────
+    // Aparece arriba de la pantalla, dura 8 segundos, imposible ignorar.
+    if (abono.pideRemito) {
+        const toast = document.createElement("div");
+        toast.id = "toast-remito";
+        toast.style.cssText = [
+            "position: fixed;",
+            "top: 70px;",          // debajo del top-nav
+            "left: 50%;",
+            "transform: translateX(-50%);",
+            "width: calc(100% - 32px);",
+            "max-width: 520px;",
+            "z-index: 9999;",
+            "background: linear-gradient(135deg, #e65100, #bf360c);",
+            "color: white;",
+            "border-radius: 14px;",
+            "padding: 16px 20px;",
+            "box-shadow: 0 8px 32px rgba(230,81,0,0.45);",
+            "display: flex;",
+            "align-items: center;",
+            "gap: 14px;",
+            "animation: slideDown 0.3s ease;",
+            "cursor: pointer;",
+        ].join(" ");
+ 
+        toast.innerHTML = `
+            <div style="font-size:36px; flex-shrink:0; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">📋</div>
+            <div style="flex:1;">
+                <div style="font-weight:900; font-size:15px; margin-bottom:4px;">
+                    ¡Este cliente requiere REMITO físico!
+                </div>
+                <div style="font-size:13px; opacity:0.92; line-height:1.5;">
+                    Antes de enviar, fotografiá el remito firmado y subilo como foto en el formulario.
+                </div>
+            </div>
+            <button onclick="document.getElementById('toast-remito').remove()"
+                    style="background:rgba(255,255,255,0.25); border:none; color:white;
+                           width:30px; height:30px; border-radius:50%; font-size:16px;
+                           cursor:pointer; flex-shrink:0; font-weight:900;">✕</button>
+        `;
+ 
+        // Click en el toast lo cierra también
+        toast.addEventListener('click', () => toast.remove());
+ 
+        document.body.appendChild(toast);
+ 
+        // Se cierra solo a los 8 segundos
+        setTimeout(() => {
+            const t = document.getElementById('toast-remito');
+            if (t) {
+                t.style.animation = 'slideUp 0.3s ease forwards';
+                setTimeout(() => t && t.remove(), 300);
+            }
+        }, 8000);
     }
 }
+
 document.addEventListener('click', function (event) { const buscador = document.getElementById('buscador'); const lista = document.getElementById('lista'); if (event.target !== buscador && event.target !== lista) { mostrarLista([], false); } });
 function mostrarBotonHistorial() { 
     let btnNav = document.getElementById('btn-historial-nav');

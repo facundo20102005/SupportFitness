@@ -1,15 +1,18 @@
 // ════════════════════════════════════════════════════════════════
 //  Service Worker — Support Fitness PWA
-//  Estrategia: Cache-First para assets estáticos,
-//              Network-First para llamadas a la API de Google.
-//
-//  Versión: incrementar CACHE_VER al deployar cambios de assets.
+//  FIXES APLICADOS:
+//  1. Precache con Promise.allSettled: un asset roto ya no cancela todo
+//  2. Listener de 'message' para forzar skipWaiting desde la app
+//  3. CACHE_VER como constante que se debe actualizar al deployar
 // ════════════════════════════════════════════════════════════════
 
-const CACHE_VER  = 'sf-v1';
+// IMPORTANTE: Cambiar este string cada vez que se suban cambios a producción.
+// Formato: 'sf-YYYYMMDD-HHMM' — evita que los usuarios vean versión vieja cacheada.
+const CACHE_VER  = 'sf-20250518-1200';
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
-// Assets que se precargan al instalar el SW
+// Assets que se intentan precargar al instalar el SW.
+// FIX: si uno falla, los demás siguen (ver INSTALL más abajo).
 const PRECACHE = [
     '/',
     '/index.html',
@@ -34,12 +37,22 @@ const PRECACHE = [
     '/assets/logo2.jpeg',
 ];
 
-// ── INSTALL: precachear todos los assets ─────────────────────────
+// ── INSTALL: FIX — usar allSettled en lugar de addAll ────────────
+// El addAll() original era todo-o-nada: si un asset falla (404, red, etc.),
+// el Service Worker NO se instala y la PWA queda sin offline.
+// Con allSettled + add individual, los assets que existen se cachean
+// y los que fallan solo loguean un warning.
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(PRECACHE))
-            .then(() => self.skipWaiting())  // activar sin esperar
+        caches.open(CACHE_NAME).then(cache =>
+            Promise.allSettled(
+                PRECACHE.map(url =>
+                    cache.add(url).catch(err => {
+                        console.warn('[SW] No se pudo cachear:', url, err.message);
+                    })
+                )
+            )
+        ).then(() => self.skipWaiting())
     );
 });
 
@@ -50,10 +63,22 @@ self.addEventListener('activate', event => {
             .then(keys => Promise.all(
                 keys
                     .filter(k => k.startsWith('support-fitness-') && k !== CACHE_NAME)
-                    .map(k => caches.delete(k))
+                    .map(k => {
+                        console.log('[SW] Eliminando cache vieja:', k);
+                        return caches.delete(k);
+                    })
             ))
             .then(() => self.clients.claim())
     );
+});
+
+// ── MESSAGE: FIX — permite forzar actualización desde la app ─────
+// La app puede enviar postMessage({ type: 'skipWaiting' }) cuando
+// detecta que hay un SW esperando, para que tome control sin recargar.
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'skipWaiting') {
+        self.skipWaiting();
+    }
 });
 
 // ── FETCH: estrategia por tipo de recurso ────────────────────────
@@ -69,36 +94,31 @@ self.addEventListener('fetch', event => {
     // 2. APIs externas (dólar) → Network-First, fallback a cache
     if (url.hostname.includes('dolarapi') ||
         url.hostname.includes('argentinadatos') ||
-        url.hostname.includes('bluelytics')) {
+        url.hostname.includes('bluelytics') ||
+        url.hostname.includes('criptoya') ||
+        url.hostname.includes('dolarito')) {
         event.respondWith(
-            fetch(event.request)
-                .catch(() => caches.match(event.request))
+            fetch(event.request).catch(() => caches.match(event.request))
         );
         return;
     }
 
     // 3. Assets estáticos → Cache-First (instantáneo en visitas repetidas)
     event.respondWith(
-        caches.match(event.request)
-            .then(cached => {
-                if (cached) return cached;
-                // No está en cache → buscar en red y guardar
-                return fetch(event.request)
-                    .then(response => {
-                        if (!response || response.status !== 200 || response.type === 'opaque') {
-                            return response;
-                        }
-                        const toCache = response.clone();
-                        caches.open(CACHE_NAME)
-                            .then(cache => cache.put(event.request, toCache));
-                        return response;
-                    })
-                    .catch(() => {
-                        // Offline fallback para páginas HTML
-                        if (event.request.destination === 'document') {
-                            return caches.match('/');
-                        }
-                    });
-            })
+        caches.match(event.request).then(cached => {
+            if (cached) return cached;
+            return fetch(event.request).then(response => {
+                if (!response || response.status !== 200 || response.type === 'opaque') {
+                    return response;
+                }
+                const toCache = response.clone();
+                caches.open(CACHE_NAME).then(cache => cache.put(event.request, toCache));
+                return response;
+            }).catch(() => {
+                if (event.request.destination === 'document') {
+                    return caches.match('/');
+                }
+            });
+        })
     );
 });
