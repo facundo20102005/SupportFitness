@@ -1,5 +1,114 @@
 // ── inf-ui.js — Interfaz, modales, notificaciones, modo app ────
 
+async function obtenerDolar() {
+    // 1. Mostrar caché si es válida (< 1 hora)
+    try {
+        const cached = JSON.parse(localStorage.getItem('dolar_oficial_cache') || 'null');
+        if (cached && cached.valor > 500 && (Date.now() - (cached.ts || 0)) < 3_600_000) {
+            valorDolarOficial = cached.valor;
+            _actualizarLabelDolar('caché');
+            return;
+        }
+    } catch(e) {}
+ 
+    // 2. Fetch con timeout compatible con TODOS los navegadores
+    //    (usa AbortController + setTimeout, NO AbortSignal.timeout)
+    function fetchConTimeout(url, ms) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { signal: controller.signal })
+            .finally(() => clearTimeout(timer));
+    }
+ 
+    const fuentes = (typeof FUENTES_DOLAR !== 'undefined' && FUENTES_DOLAR.length > 0)
+        ? FUENTES_DOLAR
+        : [{
+            url: 'https://dolarapi.com/v1/dolares/oficial',
+            parse: d => ({ venta: d.venta, fecha: null })
+          }];
+ 
+    // 3. Intentar todas las fuentes en paralelo
+    const resultados = await Promise.allSettled(
+        fuentes.map(async fuente => {
+            try {
+                const r    = await fetchConTimeout(fuente.url, 7000);
+                const data = await r.json();
+                const parsed = fuente.parse(data);
+                if (!parsed || !parsed.venta || Number(parsed.venta) < 100) {
+                    throw new Error('Valor inválido: ' + parsed?.venta);
+                }
+                return Number(parsed.venta);
+            } catch(e) {
+                throw e;
+            }
+        })
+    );
+ 
+    const valores = resultados
+        .filter(r => r.status === 'fulfilled' && r.value > 100)
+        .map(r => r.value);
+ 
+    if (valores.length > 0) {
+        // Mediana para filtrar outliers
+        valores.sort((a, b) => a - b);
+        const mediana = valores[Math.floor(valores.length / 2)];
+        valorDolarOficial = mediana;
+        localStorage.setItem('dolar_oficial_cache', JSON.stringify({ valor: mediana, ts: Date.now() }));
+        _actualizarLabelDolar('api');
+    } else {
+        // Todas las fuentes fallaron — usar caché vieja o default
+        try {
+            const oldCached = JSON.parse(localStorage.getItem('dolar_oficial_cache') || 'null');
+            if (oldCached && oldCached.valor > 100) {
+                valorDolarOficial = oldCached.valor;
+                _actualizarLabelDolar('caché-vieja');
+                return;
+            }
+        } catch(e) {}
+        // Sin caché: actualizar el label con el valor por defecto y advertencia
+        _actualizarLabelDolar('sin-conexion');
+    }
+}
+ 
+// ── Actualiza TODOS los elementos que muestran el valor del dólar ──
+// Limpia cualquier estado "Cotizando..." o spinner anterior.
+function _actualizarLabelDolar(fuente) {
+    const valor = valorDolarOficial || 1000;
+    const esFallback = !fuente || fuente === 'sin-conexion';
+ 
+    // Texto del label (con indicador de estado)
+    let labelText;
+    if (fuente === 'sin-conexion') {
+        labelText = `💱 USD ~$${valor.toLocaleString('es-AR')} ⚠️ sin red`;
+    } else if (fuente === 'caché-vieja') {
+        labelText = `💱 USD $${valor.toLocaleString('es-AR')} (desactualizado)`;
+    } else {
+        labelText = `💱 USD Oficial: $${valor.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
+    }
+ 
+    // Actualizar burbuja-dolar-label (dentro del panel de precios)
+    const labelEl = document.getElementById('burbuja-dolar-label');
+    if (labelEl) labelEl.innerText = modoApp === 'presupuestos' ? labelText : '';
+ 
+    // Actualizar CUALQUIER elemento con clase "dolar-display" (por si hay más en el HTML)
+    document.querySelectorAll('.dolar-display').forEach(el => {
+        el.innerText = labelText;
+        el.style.color = esFallback ? '#fb923c' : 'inherit';
+    });
+ 
+    // Ocultar spinners/cotizando activos
+    document.querySelectorAll('.dolar-loading, #dolar-cotizando, [data-dolar-loading]').forEach(el => {
+        el.style.display = 'none';
+    });
+ 
+    // Si la burbuja de precios ya está abierta, refrescarla con el nuevo valor
+    const burbuja = document.getElementById('burbuja-precios');
+    if (burbuja && burbuja.style.display !== 'none') {
+        renderizarBurbujaPrecios();
+    }
+}
+ 
+
 function toggleBurbujaPrecios() {
     const burbuja = document.getElementById('burbuja-precios');
     const btn = document.getElementById('btn-ver-precios');
@@ -21,12 +130,13 @@ function toggleBurbujaPrecios() {
 }
 
 function renderizarBurbujaPrecios() {
-    const contenedor = document.getElementById('burbuja-precios-contenido');
-    const labelDolar = document.getElementById('burbuja-dolar-label');
+    const contenedor   = document.getElementById('burbuja-precios-contenido');
+    const labelDolar   = document.getElementById('burbuja-dolar-label');
     const tituloBurbuja = document.getElementById('burbuja-titulo');
     if (!contenedor) return;
-
+ 
     const tasaDolar = valorDolarOficial;
+ 
     if (labelDolar) {
         labelDolar.innerText = modoApp === 'presupuestos'
             ? `💱 USD Oficial: $${tasaDolar.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
@@ -35,35 +145,140 @@ function renderizarBurbujaPrecios() {
     if (tituloBurbuja) {
         tituloBurbuja.innerText = modoApp === 'ofertas' ? '🛠️ Precios de Mantenimiento' : '📋 Lista de Precios';
     }
-
-    const precios = modoApp === 'presupuestos' ? PRECIOS_PRESUPUESTOS : PRECIOS_OFERTAS;
-
-    let html = '';
-    Object.entries(precios).forEach(([nombre, info]) => {
-        const esUSD = info.moneda === 'USD';
-        const precioARS = esUSD ? Math.round(info.precio * tasaDolar) : info.precio;
-        const precioConIVA = Math.round(precioARS * 1.21);
-
-        const badgeUSD = esUSD
-            ? `<span class="precio-badge-usd">U$D ${info.precio}</span>`
-            : `<span style="font-size:11px; color:var(--inf-muted);">ARS</span>`;
-
-        html += `
-        <div class="precio-row">
-            <span class="precio-nombre">${nombre}</span>
-            ${badgeUSD}
-            <span class="precio-valor">$${precioARS.toLocaleString('es-AR')}</span>
-            ${modoApp === 'presupuestos' ? `<span class="precio-iva">+IVA: $${precioConIVA.toLocaleString('es-AR')}</span>` : ''}
-        </div>`;
-    });
-
+ 
+    // ── Elegir estructura de precios ──────────────────────────────
+    const usarCategorias = modoApp === 'presupuestos' && typeof PRECIOS_POR_CATEGORIA !== 'undefined';
+    const precios        = modoApp === 'presupuestos' ? PRECIOS_PRESUPUESTOS : PRECIOS_OFERTAS;
+ 
+    // ── Construir HTML del buscador ───────────────────────────────
+    const searchId = '_precio-search-input';
+    let html = `
+        <div style="padding:10px 12px 6px; position:sticky; top:0; background:var(--inf-surface,#1a2035); z-index:5; border-bottom:1px solid var(--inf-border,rgba(255,255,255,0.06));">
+            <div style="position:relative;">
+                <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:15px; pointer-events:none;">🔍</span>
+                <input id="${searchId}" type="text" placeholder="Buscar repuesto o servicio..."
+                    oninput="_filtrarListaPrecios(this.value)"
+                    style="width:100%; padding:9px 12px 9px 34px; border-radius:8px;
+                           border:1.5px solid var(--inf-border,rgba(255,255,255,0.15));
+                           background:var(--inf-card,rgba(255,255,255,0.05));
+                           color:var(--inf-text,#f1f5f9); font-size:13px; outline:none;
+                           box-sizing:border-box;"
+                    autocomplete="off">
+            </div>
+        </div>
+        <div id="_precio-lista-completa">
+    `;
+ 
+    // ── Renderizar por categorías (modo presupuesto) ──────────────
+    if (usarCategorias) {
+        Object.entries(PRECIOS_POR_CATEGORIA).forEach(([cat, items], catIdx) => {
+            const catId = '_cat-' + catIdx;
+            html += `
+                <div class="_precio-categoria" data-cat="${cat.toLowerCase()}">
+                    <div onclick="this.nextElementSibling.classList.toggle('_cat-cerrada')"
+                         style="display:flex; align-items:center; justify-content:space-between;
+                                padding:9px 14px; cursor:pointer; font-weight:800; font-size:12px;
+                                text-transform:uppercase; letter-spacing:0.5px;
+                                color:var(--inf-accent,#60a5fa);
+                                border-top:1px solid var(--inf-border,rgba(255,255,255,0.06));
+                                user-select:none; background:var(--inf-card,rgba(255,255,255,0.02));">
+                        <span>${cat}</span>
+                        <span style="font-size:16px; transition:transform 0.2s;">▾</span>
+                    </div>
+                    <div id="${catId}">
+            `;
+            Object.entries(items).forEach(([nombre, info]) => {
+                const esUSD    = info.moneda === 'USD';
+                const precioARS = esUSD ? Math.round(info.precio * tasaDolar) : Math.round(info.precio);
+                const conIVA   = Math.round(precioARS * 1.21);
+                const badgeUSD = esUSD
+                    ? `<span style="font-size:10px; background:#1e3a5f; color:#60a5fa; padding:1px 5px; border-radius:4px; font-weight:700;">U$D ${info.precio}</span>`
+                    : `<span style="font-size:10px; opacity:0.5;">ARS</span>`;
+ 
+                html += `
+                    <div class="precio-row _precio-item" data-nombre="${nombre.toLowerCase()}"
+                         onclick="_agregarItemDesdeListaPrecios('${nombre.replace(/'/g,"\\'")}', ${precioARS})"
+                         title="Clic para agregar al presupuesto"
+                         style="cursor:pointer;">
+                        <span class="precio-nombre">${nombre}</span>
+                        ${badgeUSD}
+                        <span class="precio-valor">$${precioARS.toLocaleString('es-AR')}</span>
+                        ${modoApp === 'presupuestos' ? `<span class="precio-iva">+IVA: $${conIVA.toLocaleString('es-AR')}</span>` : ''}
+                    </div>`;
+            });
+            html += `</div></div>`;
+        });
+    } else {
+        // ── Sin categorías: lista plana (modo ofertas o sin PRECIOS_POR_CATEGORIA) ──
+        Object.entries(precios).forEach(([nombre, info]) => {
+            const esUSD     = info.moneda === 'USD';
+            const precioARS = esUSD ? Math.round(info.precio * tasaDolar) : Math.round(info.precio);
+            const conIVA    = Math.round(precioARS * 1.21);
+            const badgeUSD  = esUSD
+                ? `<span class="precio-badge-usd">U$D ${info.precio}</span>`
+                : `<span style="font-size:11px; color:var(--inf-muted);">ARS</span>`;
+ 
+            html += `
+                <div class="precio-row _precio-item" data-nombre="${nombre.toLowerCase()}"
+                     onclick="_agregarItemDesdeListaPrecios('${nombre.replace(/'/g,"\\'")}', ${precioARS})"
+                     title="Clic para agregar">
+                    <span class="precio-nombre">${nombre}</span>
+                    ${badgeUSD}
+                    <span class="precio-valor">$${precioARS.toLocaleString('es-AR')}</span>
+                    ${modoApp === 'presupuestos' ? `<span class="precio-iva">+IVA: $${conIVA.toLocaleString('es-AR')}</span>` : ''}
+                </div>`;
+        });
+    }
+ 
+    html += `</div>`; // cierre _precio-lista-completa
+ 
     if (modoApp === 'presupuestos') {
-        html += `<div style="padding:10px 16px; font-size:11px; color:var(--inf-muted); text-align:center; font-style:italic; border-top:1px solid var(--inf-border);">
+        html += `<div style="padding:8px 14px; font-size:11px; color:var(--inf-muted); text-align:center; font-style:italic; border-top:1px solid var(--inf-border);">
             Los precios en USD se calculan al tipo de cambio oficial del día.
+            Tocá un ítem para agregarlo al presupuesto.
         </div>`;
     }
-
+ 
     contenedor.innerHTML = html;
+ 
+    // Focus en el buscador al abrir
+    setTimeout(() => document.getElementById(searchId)?.focus(), 80);
+}
+ 
+// ── Filtrado en tiempo real ───────────────────────────────────
+function _filtrarListaPrecios(texto) {
+    const q = texto.toLowerCase().trim();
+    document.querySelectorAll('._precio-item').forEach(row => {
+        const nombre = row.dataset.nombre || '';
+        const visible = !q || nombre.includes(q);
+        row.style.display = visible ? '' : 'none';
+    });
+ 
+    // Mostrar/ocultar encabezados de categoría según si tienen ítems visibles
+    document.querySelectorAll('._precio-categoria').forEach(cat => {
+        const hayVisibles = Array.from(cat.querySelectorAll('._precio-item')).some(i => i.style.display !== 'none');
+        cat.style.display = hayVisibles ? '' : 'none';
+        // Si hay búsqueda activa, expandir todas las categorías
+        if (q) {
+            const cuerpo = cat.querySelector('div:nth-child(2)');
+            if (cuerpo) cuerpo.classList.remove('_cat-cerrada');
+        }
+    });
+}
+ 
+// ── Agregar ítem desde la lista al formulario ─────────────────
+function _agregarItemDesdeListaPrecios(nombre, precio) {
+    if (typeof agregarItem === 'function') {
+        agregarItem(nombre, precio);
+        // Animar el ítem recién agregado
+        const items = document.querySelectorAll('.maquina-item');
+        if (items.length) {
+            const ultimo = items[items.length - 1];
+            ultimo.style.animation = 'none';
+            ultimo.style.outline = '2px solid #1a73e8';
+            setTimeout(() => { ultimo.style.outline = ''; }, 1200);
+        }
+    }
 }
 
 let cacheHistorial = [];

@@ -124,6 +124,7 @@ async function obtenerYRenderizarCreados() {
 
     try {
         documentosGuardados = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: hojaReq } });
+        _invalidarCuitSet();
         renderizarTarjetas();
     } catch(e) {
         const esRedeploy = e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'));
@@ -190,87 +191,191 @@ function _debounceSearch(val) {
         renderizarTarjetas();
     }, 280);  // 280ms — suficiente para no percibir el delay
 }
+ 
+let filtroTipoActual = 'todos'; // 'todos' | 'abono' | 'reparacion' | 'sin_desc'
+ 
+function setFiltroTipo(valor) {
+    filtroTipoActual = valor;
+    window._paginaDocsActual = 0;
+    renderizarTarjetas();
+}
+//////////////////////////////////////
+let _cuitSetAbonos = null;
+function _getCuitSetAbonos() {
+    if (_cuitSetAbonos) return _cuitSetAbonos;
+    _cuitSetAbonos = new Set();
+    if (typeof listaAbonosBase !== 'undefined' && listaAbonosBase.length > 0) {
+        listaAbonosBase.forEach(a => {
+            const c = String(a.cuit || '').replace(/\D/g, '');
+            if (c.length >= 8) _cuitSetAbonos.add(c);
+        });
+    }
+    return _cuitSetAbonos;
+}
+// Invalidar el set cuando se recarguen los abonos
+function _invalidarCuitSet() { _cuitSetAbonos = null; }
+ ////////////////////////////////////
+ 
+/**
+ * Clasifica un documento en:
+ *   'abono'     → mantenimiento preventivo (descripción o CUIT conocido)
+ *   'reparacion'→ reparación con descripción manual
+ *   'sin_desc'  → importado de ARCA sin identificar, CUIT desconocido
+ *
+ * LÓGICA:
+ * 1. Si algún ítem dice "mantenimiento preventivo" → abono explícito
+ * 2. Si tiene descripción real (no vacía ni "Pendiente..."):
+ *    → Es una reparación con detalle
+ * 3. Si NO tiene descripción (o dice "Pendiente de edición..."):
+ *    → Buscar el CUIT en Base Abonos
+ *    → Si el CUIT está → probable abono no identificado → 'abono'
+ *    → Si no está → sin descripción genuina → 'sin_desc'
+ */
+function clasificarDocumento(doc) {
+    const items = doc.items || [];
+ 
+    // Todas las descripciones
+    const descs = items.map(i => String(i.desc || '').toLowerCase().trim());
+ 
+    // 1. Mantenimiento preventivo explícito
+    if (descs.some(d => d.includes('mantenimiento preventivo'))) return 'abono';
+ 
+    // ── Determinar si la descripción es "vacía" ───────────────────
+    const DESC_VACIAS = new Set([
+        'pendiente de edición...',
+        'pendiente de edicion...',
+        '—', '-', '', 'sin descripcion', 'sin descripción'
+    ]);
+    const primerDesc = descs[0] || '';
+    const esSinDesc = items.length === 0 || DESC_VACIAS.has(primerDesc);
+ 
+    // 2. Tiene descripción real → reparación
+    if (!esSinDesc) return 'reparacion';
+ 
+    // 3. Sin descripción → buscar CUIT en Base Abonos
+    if (doc.cuit) {
+        const cuitLimpio = String(doc.cuit).replace(/\D/g, '');
+        if (cuitLimpio.length >= 8 && _getCuitSetAbonos().has(cuitLimpio)) {
+            return 'abono'; // ARCA importó una factura de un abono conocido
+        }
+    }
+ 
+    // 4. Sin descripción y CUIT desconocido
+    return 'sin_desc';
+}
+ 
+ 
+/**
+ * Badge HTML del tipo de documento.
+ * NUEVO: el badge 'abono' distingue entre identificado por descripción
+ * o solo por CUIT (muestra "📅 Abono (por CUIT)" en el segundo caso).
+ */
+function badgeTipoDoc(tipo, doc) {
+    // Detectar si el abono fue identificado por CUIT (no por descripción)
+    let esPorCuit = false;
+    if (tipo === 'abono' && doc) {
+        const descs = (doc.items || []).map(i => String(i.desc || '').toLowerCase());
+        const tieneDescExplicita = descs.some(d => d.includes('mantenimiento preventivo'));
+        esPorCuit = !tieneDescExplicita;
+    }
+ 
+    const conf = {
+        abono: {
+            label: esPorCuit ? '📅 Abono (CUIT)' : '📅 Abono',
+            bg:    '#1e3a5f',
+            color: '#60a5fa',
+            border:'rgba(96,165,250,0.3)',
+            title: esPorCuit
+                ? 'Identificado como Abono por coincidencia de CUIT con Base Abonos'
+                : 'Mantenimiento Preventivo identificado en la descripción'
+        },
+        reparacion: {
+            label: '🔧 Reparación',
+            bg:    '#1a3520',
+            color: '#4ade80',
+            border:'rgba(74,222,128,0.3)',
+            title: 'Documento con descripción de reparación manual'
+        },
+        sin_desc: {
+            label: '⚠️ Sin Descripción',
+            bg:    '#3d2500',
+            color: '#fb923c',
+            border:'rgba(251,146,60,0.4)',
+            title: 'Importado de ARCA sin descripción identificable ni CUIT en Base Abonos'
+        },
+    };
+ 
+    const c = conf[tipo] || conf['sin_desc'];
+    return `<span title="${c.title}"
+        style="background:${c.bg}; color:${c.color}; border:1px solid ${c.border};
+               padding:2px 8px; border-radius:6px; font-size:10px; font-weight:800;
+               letter-spacing:0.3px; white-space:nowrap; flex-shrink:0; cursor:help;">
+        ${c.label}
+    </span>`;
+}
 
 function renderizarTarjetas() {
     const contenedor = document.getElementById('contenedor-informes-creados');
     contenedor.innerHTML = '';
-    
-    // ============================================================
-    // 1. AUTO-NOMBRE POR CUIT GLOBAL (Conecta Ofertas y Presupuestos)
-    // ============================================================
-    let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
-    
+ 
+    // 1. Auto-nombre por CUIT y parseo de fechas
+        let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
     documentosGuardados.forEach(d => {
         let clienteStr = String(d.cliente || "Sin Nombre");
-        if (d.cuit && !clienteStr.includes("⚠️ IMPORTADO")) {
-            cuitDic[d.cuit] = clienteStr;
-        }
+        if (d.cuit && !clienteStr.includes("⚠️ IMPORTADO")) cuitDic[d.cuit] = clienteStr;
         d.fechaLimpia = limpiarFecha(d.fecha);
-        const partes = d.fechaLimpia.split('/');
-        d.mesAnio = partes.length === 3 ? `${partes[1]}/${partes[2]}` : "Sin Fecha";
+        const partes  = d.fechaLimpia.split('/');
+        d.mesAnio     = partes.length === 3 ? `${partes[1]}/${partes[2]}` : "Sin Fecha";
+        // Clasificar tipo una sola vez
+        d._tipo = clasificarDocumento(d);
     });
-    
     localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
-
     documentosGuardados.forEach(d => {
-        if (d.cuit && cuitDic[d.cuit]) {
-            d.cliente = cuitDic[d.cuit];
-        }
+        if (d.cuit && cuitDic[d.cuit]) d.cliente = cuitDic[d.cuit];
         d.cliente = String(d.cliente || "Sin Nombre");
     });
-
-    // ============================================================
-    // 2. BUSCADOR INTELIGENTE (Permite buscar "Gym 09/05/2025")
-    // ============================================================
+ 
+    // 2. Buscador
     const textoBuscado = (document.getElementById('buscador-global')?.value || "").toLowerCase().trim();
-    
     let filtrados = documentosGuardados.filter(d => {
-        let itemsStr = d.items && Array.isArray(d.items) ? d.items.map(i => i.tipo + " " + i.desc).join(" ") : "";
+        let itemsStr  = d.items && Array.isArray(d.items) ? d.items.map(i => i.tipo + " " + i.desc).join(" ") : "";
         let numFactFix = String(d.numFactura || "");
-        
-        // Palabras clave extra para que encuentre fácil si pones "Factura" o "Nota"
         let tipoFacturaOculto = "";
         if (numFactFix.startsWith("NC ")) tipoFacturaOculto = `nota de credito ${numFactFix.replace("NC ", "")}`;
         else if (numFactFix.includes("-")) tipoFacturaOculto = `factura ${numFactFix}`;
-        
         let busqueda = `${d.cliente} ${d.cuit} ${d.fechaLimpia} ${d.total} ${numFactFix} ${tipoFacturaOculto} ${itemsStr}`.toLowerCase();
-        
-        // Si el usuario escribe varias palabras separadas por espacio, exigimos que TODAS coincidan
-        let palabrasBuscadas = textoBuscado.split(" ");
-        return palabrasBuscadas.every(palabra => busqueda.includes(palabra));
+        return textoBuscado.split(" ").every(p => busqueda.includes(p));
     });
-
-    // ============================================================
-    // 3. EXTRAER Y ORDENAR LOS MESES (🔥 DE MÁS RECIENTE A MÁS ANTIGUO 🔥)
-    // ============================================================
+ 
+    // 3. Meses y filtros
     let mesesSet = new Set();
     filtrados.forEach(d => mesesSet.add(d.mesAnio));
-    let mesesArr = Array.from(mesesSet).sort((a,b) => {
-        if(a === "Sin Fecha") return 1; if(b === "Sin Fecha") return -1;
+    let mesesArr = Array.from(mesesSet).sort((a, b) => {
+        if (a === "Sin Fecha") return 1; if (b === "Sin Fecha") return -1;
         let [ma, ya] = a.split('/'); let [mb, yb] = b.split('/');
-        // Invertido: Año mayor y mes mayor van primero
-        return new Date(yb, mb-1) - new Date(ya, ma-1); 
+        return new Date(yb, mb-1) - new Date(ya, ma-1);
     });
-
+ 
     if (filtroMesActual !== 'Todos' && !mesesSet.has(filtroMesActual)) filtroMesActual = 'Todos';
-
-    // 4. APLICAR FILTROS DE BURBUJA
+ 
+    // 4. Aplicar filtros (pago + mes + TIPO)
     let finales = filtrados.filter(d => {
-        let matchPago = (filtroPagoActual === 'Todos' || d.pagado === filtroPagoActual);
-        let matchMes = (filtroMesActual === 'Todos' || d.mesAnio === filtroMesActual);
-        return matchPago && matchMes;
+        const matchPago = (filtroPagoActual === 'Todos' || d.pagado === filtroPagoActual);
+        const matchMes  = (filtroMesActual  === 'Todos' || d.mesAnio === filtroMesActual);
+        const matchTipo = (filtroTipoActual === 'todos' || d._tipo === filtroTipoActual);
+        return matchPago && matchMes && matchTipo;
     });
-
-    // 🔥 ORDENAMOS LAS TARJETAS DE MÁS NUEVA A MÁS VIEJA 🔥
+ 
+    // Ordenar de más nuevo a más viejo
     finales.sort((a, b) => {
-        if(a.fechaLimpia === "Sin Fecha") return 1;
-        if(b.fechaLimpia === "Sin Fecha") return -1;
+        if (a.fechaLimpia === "Sin Fecha") return 1;
+        if (b.fechaLimpia === "Sin Fecha") return -1;
         let [da, ma, ya] = a.fechaLimpia.split('/');
         let [db, mb, yb] = b.fechaLimpia.split('/');
         return new Date(yb, mb-1, db) - new Date(ya, ma-1, da);
     });
-
-    // 5. CHIPS DE MES (meses-scroll con clase mes-chip)
+ 
+    // 5. Chips de mes
     const mesesScrollEl = document.getElementById('meses-scroll');
     if (mesesScrollEl) {
         let chipsHTML = `<button class="mes-chip ${filtroMesActual==='Todos'?'activo':''}" onclick="setFiltroMes('Todos')">Ver todos</button>`;
@@ -279,8 +384,40 @@ function renderizarTarjetas() {
         });
         mesesScrollEl.innerHTML = chipsHTML;
     }
-
-    // Botones filtro estado con colores
+ 
+    // ── NUEVO: Chips de tipo ────────────────────────────────────
+    // Si tienes un elemento con id="tipo-scroll", los chips aparecen ahí.
+    // Si no existe ese elemento, los chips se insertan automáticamente antes del meses-scroll.
+    let tipoScrollEl = document.getElementById('tipo-scroll');
+    if (!tipoScrollEl && mesesScrollEl) {
+        // Auto-crear el contenedor si no existe en el HTML
+        tipoScrollEl = document.createElement('div');
+        tipoScrollEl.id = 'tipo-scroll';
+        tipoScrollEl.style.cssText = 'display:flex; gap:6px; overflow-x:auto; padding:4px 0 10px; flex-wrap:wrap;';
+        mesesScrollEl.parentNode.insertBefore(tipoScrollEl, mesesScrollEl);
+    }
+    if (tipoScrollEl) {
+        // Contar por tipo para mostrar en el chip
+        const conteos = { todos: filtrados.length, abono: 0, reparacion: 0, sin_desc: 0 };
+        filtrados.forEach(d => { if (conteos[d._tipo] !== undefined) conteos[d._tipo]++; });
+ 
+        const tiposChips = [
+            { val: 'todos',     label: `Todos (${conteos.todos})`,                       color: '#1a73e8' },
+            { val: 'abono',     label: `📅 Abonos (${conteos.abono})`,                   color: '#60a5fa' },
+            { val: 'reparacion',label: `🔧 Reparaciones (${conteos.reparacion})`,        color: '#4ade80' },
+            { val: 'sin_desc',  label: `⚠️ Sin Descripción (${conteos.sin_desc})`,       color: '#fb923c' },
+        ];
+        tipoScrollEl.innerHTML = tiposChips.map(t => `
+            <button onclick="setFiltroTipo('${t.val}')"
+                    style="padding:5px 12px; border-radius:20px; font-size:12px; font-weight:700;
+                           cursor:pointer; white-space:nowrap; transition:all 0.2s; border:1.5px solid ${t.color};
+                           background:${filtroTipoActual===t.val ? t.color : 'transparent'};
+                           color:${filtroTipoActual===t.val ? 'white' : t.color};">
+                ${t.label}
+            </button>`).join('');
+    }
+ 
+    // 6. Botones filtro pago
     const filtroMap = { pendiente:'Pendiente', pagado:'Pagado', todos:'Todos' };
     Object.entries(filtroMap).forEach(([k, v]) => {
         const btn = document.getElementById('filtro-' + k);
@@ -295,25 +432,24 @@ function renderizarTarjetas() {
         btn.style.color      = colors[k].col;
         btn.style.boxShadow  = isActive ? '0 2px 8px rgba(0,0,0,0.12)' : 'none';
     });
-
-    // 6. PAGINACIÓN — máximo 15 docs por página para no crear 1600+ nodos DOM
+ 
+    // 7. Paginación
     const DOCS_POR_PAG = 15;
-    if (typeof _paginaDocsActual === 'undefined') window._paginaDocsActual = 0;
-
-    // Reset a página 0 si cambió el filtro/búsqueda
-    const _keyFiltro = textoBuscado + filtroPagoActual + filtroMesActual;
+    if (typeof window._paginaDocsActual === 'undefined') window._paginaDocsActual = 0;
+ 
+    const _keyFiltro = textoBuscado + filtroPagoActual + filtroMesActual + filtroTipoActual;
     if (window._keyFiltroAnterior !== _keyFiltro) {
         window._paginaDocsActual  = 0;
         window._keyFiltroAnterior = _keyFiltro;
     }
-
-    const totalPags  = Math.ceil(finales.length / DOCS_POR_PAG);
-    const paginados  = finales.slice(
+ 
+    const totalPags = Math.ceil(finales.length / DOCS_POR_PAG);
+    const paginados = finales.slice(
         window._paginaDocsActual * DOCS_POR_PAG,
         (window._paginaDocsActual + 1) * DOCS_POR_PAG
     );
-
-    // 7. TARJETAS CON NUEVO DISEÑO
+ 
+    // 8. Tarjetas
     if (finales.length === 0) {
         contenedor.innerHTML = `<div style="text-align:center; padding:40px 20px; color:#9aa0a6;">
             <div class="inf-empty__icon">🗂️</div>
@@ -321,30 +457,45 @@ function renderizarTarjetas() {
         </div>`;
         return;
     }
-
+ 
     paginados.forEach((doc, animIdx) => {
         const estadoReal = doc.estado || "Pendiente";
         const esPagado   = doc.pagado === "Pagado";
         const colorEst   = estadoReal === "Facturado / Aprobado" ? "#34a853" : estadoReal === "Enviado" ? "#1a73e8" : "#fbbc04";
         const colorPag   = esPagado ? "#0f9d58" : "#d93025";
         const bgPag      = esPagado ? "#e6f4ea" : "#fce8e6";
-
-        const badgeCuit = doc.cuit
+ 
+        const badgeCuit  = doc.cuit
             ? `<span style="background:#f1f3f4; color:#5f6368; padding:2px 8px; border-radius:8px; font-size:11px; font-weight:700; border:1px solid #e0e0e0; margin-right:4px;">${doc.cuit}</span>`
             : '';
-        let factStr = String(doc.numFactura || '');
+ 
+        let factStr    = String(doc.numFactura || '');
         let displayFact = factStr.startsWith("NC ") ? `🔄 NC ${factStr.replace("NC ","")}` : factStr.includes("-") ? `📄 Factura ${factStr}` : factStr ? `📄 ${factStr}` : '';
         const badgeFact = displayFact ? `<span class="badge-fact">${displayFact}</span>` : '';
-
+ 
+        // ── NUEVO: Badge de tipo de documento ─────────────────
+        const bdgTipo = badgeTipoDoc(doc._tipo, doc);
+ 
+        // ── ALERTA ESPECIAL para "sin descripción" ────────────
+        const alertaSinDesc = doc._tipo === 'sin_desc' ? `
+            <div style="background:rgba(251,146,60,0.12); border:1px solid rgba(251,146,60,0.3);
+                        border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:12px;
+                        color:#fb923c; font-weight:700;">
+                ⚠️ Este documento fue importado de ARCA sin descripción identificable.
+                Tocá <b>✏️ Editar</b> para agregar el detalle de la reparación.
+            </div>` : '';
+ 
         let maquinasHTML = '';
         if (doc.items && Array.isArray(doc.items)) {
             maquinasHTML = `<ul style="margin:0 0 10px; padding-left:18px; font-size:13px; color:#475467; line-height:1.7;">` +
                 doc.items.map(m => {
-                    let extra = (m.metros && m.terminales) ? ` <span style="color:#0f9d58; font-size:11px;">(${m.metros}m / ${m.terminales} term.)</span>` : '';
+                    let extra = (m.metros && m.terminales)
+                        ? ` <span style="color:#0f9d58; font-size:11px;">(${m.metros}m / ${m.terminales} term.)</span>`
+                        : '';
                     return `<li><b>${m.cant}x ${m.desc||'—'}</b> — ${m.tipo} <span style="color:#d93025; font-size:11px;">($${(m.precio||0).toLocaleString('es-AR')} c/u)</span>${extra}</li>`;
                 }).join('') + `</ul>`;
         }
-
+ 
         const selectsHTML = modoApp === 'presupuestos' ? `
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
                 <div>
@@ -365,11 +516,11 @@ function renderizarTarjetas() {
                     </select>
                 </div>
             </div>` : '';
-
+ 
         const div = document.createElement('div');
         div.className = `doc-card-v3 ${esPagado?'pagado':'pendiente'}`;
         div.style.animationDelay = (animIdx * 0.035) + 's';
-
+ 
         div.innerHTML = `
             <div class="doc-header-v3" onclick="
                 const body = this.nextElementSibling;
@@ -382,10 +533,13 @@ function renderizarTarjetas() {
                         ${badgeCuit}
                         ${badgeFact}
                     </div>
-                    <div class="doc-meta-v3">
-                        ${doc.fechaLimpia}
-                        &nbsp;·&nbsp;
-                        Total: <strong style="color:#1a73e8;">$${Number(doc.total).toLocaleString('es-AR')}</strong>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:3px;">
+                        ${bdgTipo}
+                        <span class="doc-meta-v3">
+                            ${doc.fechaLimpia}
+                            &nbsp;·&nbsp;
+                            Total: <strong style="color:#1a73e8;">$${Number(doc.total).toLocaleString('es-AR')}</strong>
+                        </span>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
@@ -394,6 +548,7 @@ function renderizarTarjetas() {
                 </div>
             </div>
             <div class="doc-expand-v3">
+                ${alertaSinDesc}
                 ${maquinasHTML}
                 ${selectsHTML}
                 <div class="doc-actions">
@@ -405,7 +560,6 @@ function renderizarTarjetas() {
                         🖼️ Ver Fotos
                     </button>` : ''}
                 </div>
-                <!-- Acciones rápidas: PDF y Mail -->
                 <div style="display:flex; gap:8px; margin-top:8px;">
                     <button onclick="abrirVistaPresupuesto(${doc.id}, this)"
                             style="flex:1; padding:11px; background:linear-gradient(135deg,#1a73e8,#1155cc);
@@ -428,28 +582,28 @@ function renderizarTarjetas() {
         `;
         contenedor.appendChild(div);
     });
-
-    // ── Controles de paginación ───────────────────────────────────
+ 
+    // Paginación
     if (totalPags > 1) {
         const navEl = document.createElement('div');
         navEl.style.cssText = 'display:flex; align-items:center; justify-content:center; gap:10px; padding:18px 0 8px; flex-wrap:wrap;';
-
+ 
         const btnAnterior = document.createElement('button');
         btnAnterior.textContent = '← Anterior';
-        btnAnterior.disabled = window._paginaDocsActual === 0;
-        btnAnterior.className = 'inf-btn inf-btn--gris inf-btn--sm';
-        btnAnterior.onclick = () => { window._paginaDocsActual--; renderizarTarjetas(); contenedor.scrollIntoView({ behavior:'smooth', block:'start' }); };
-
+        btnAnterior.disabled    = window._paginaDocsActual === 0;
+        btnAnterior.className   = 'inf-btn inf-btn--gris inf-btn--sm';
+        btnAnterior.onclick     = () => { window._paginaDocsActual--; renderizarTarjetas(); contenedor.scrollIntoView({ behavior:'smooth', block:'start' }); };
+ 
         const info = document.createElement('span');
-        info.style.cssText = 'font-size:13px; font-weight:700; color:var(--inf-sub,#94a3b8);';
-        info.textContent = `Página ${window._paginaDocsActual + 1} de ${totalPags}  (${finales.length} docs)`;
-
+        info.style.cssText  = 'font-size:13px; font-weight:700; color:var(--inf-sub,#94a3b8);';
+        info.textContent    = `Página ${window._paginaDocsActual + 1} de ${totalPags}  (${finales.length} docs)`;
+ 
         const btnSiguiente = document.createElement('button');
         btnSiguiente.textContent = 'Siguiente →';
-        btnSiguiente.disabled = window._paginaDocsActual >= totalPags - 1;
-        btnSiguiente.className = 'inf-btn inf-btn--gris inf-btn--sm';
-        btnSiguiente.onclick = () => { window._paginaDocsActual++; renderizarTarjetas(); contenedor.scrollIntoView({ behavior:'smooth', block:'start' }); };
-
+        btnSiguiente.disabled    = window._paginaDocsActual >= totalPags - 1;
+        btnSiguiente.className   = 'inf-btn inf-btn--gris inf-btn--sm';
+        btnSiguiente.onclick     = () => { window._paginaDocsActual++; renderizarTarjetas(); contenedor.scrollIntoView({ behavior:'smooth', block:'start' }); };
+ 
         navEl.appendChild(btnAnterior);
         navEl.appendChild(info);
         navEl.appendChild(btnSiguiente);

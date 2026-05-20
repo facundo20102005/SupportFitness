@@ -403,8 +403,91 @@ function seleccionar(valor) {
     _verificarRemitoGym(valor);
 }
 
+// ── Diccionario de abreviaturas comunes ──────────────────────
+
+const _ABREV_GYM = {
+    'cons\\.?': 'consorcio',
+    'prop\\.?': 'propietarios',
+    'de prop\\.?': 'de propietarios',
+    'coprops?\\.?': 'copropietarios',
+    's\\.?a\\.?': '',          // "S.A." → ignorar (demasiado genérico)
+    's\\.?r\\.?l\\.?': '',     // "S.R.L." → ignorar
+    'av\\.?': 'avenida',
+    'gral\\.?': 'general',
+    'dto\\.?': 'departamento',
+};
+ 
+/**
+ * Normaliza un nombre de gimnasio expandiendo abreviaturas y
+ * eliminando puntuación irrelevante para comparación.
+ */
+function _normalizarNombreGym(str) {
+    let s = String(str || '')
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+        .trim();
+ 
+    // Expandir abreviaturas
+    for (const [abrev, expansion] of Object.entries(_ABREV_GYM)) {
+        s = s.replace(new RegExp('\\b' + abrev + '\\b', 'gi'), expansion + ' ');
+    }
+ 
+    // Limpiar puntuación (mantener números para "1709", "3650", etc.)
+    s = s.replace(/[.,\-_¡!¿?()[\]{}'"]/g, ' ');
+    s = s.replace(/\s+/g, ' ').trim();
+ 
+    return s;
+}
+ 
+/**
+ * Calcula un score de similitud entre dos nombres de gimnasio
+ * basado en palabras significativas compartidas.
+ * Retorna un número entre 0 y 1.
+ */
+function _scoreGym(a, b) {
+    const na = _normalizarNombreGym(a);
+    const nb = _normalizarNombreGym(b);
+ 
+    // Coincidencia exacta después de normalizar
+    if (na === nb) return 1.0;
+ 
+    // Palabras significativas (longitud > 3 para evitar "de", "la", "los")
+    const wordsA = na.split(' ').filter(w => w.length > 3 && isNaN(w));
+    const wordsB = nb.split(' ').filter(w => w.length > 3 && isNaN(w));
+    // Números exactos (ej: "1709", "3650") también son significativos
+    const numsA  = na.split(' ').filter(w => !isNaN(w) && w.length > 0);
+    const numsB  = nb.split(' ').filter(w => !isNaN(w) && w.length > 0);
+ 
+    if (wordsA.length === 0 && numsA.length === 0) return 0;
+    if (wordsB.length === 0 && numsB.length === 0) return 0;
+ 
+    // Coincidencias de palabras
+    const matchWords = wordsA.filter(w => wordsB.includes(w)).length;
+    // Coincidencias de números (peso alto: "1709" es muy identificatorio)
+    const matchNums  = numsA.filter(n => numsB.includes(n)).length;
+ 
+    const totalA = wordsA.length + numsA.length * 2; // Números valen doble
+    const totalB = wordsB.length + numsB.length * 2;
+    const score  = (matchWords + matchNums * 2) / Math.max(totalA, totalB);
+ 
+    return score;
+}
+ 
+// ── UMBRAL DE SIMILITUD ───────────────────────────────────────
+// 0.70 = el 70% de las palabras significativas deben coincidir.
+// Subir a 0.80 si hay demasiados falsos positivos.
+// Bajar a 0.60 si algunos gyms con nombres muy distintos no se detectan.
+const _UMBRAL_REMITO = 0.70;
+ 
+/**
+ * Verifica si el gimnasio seleccionado necesita remito u OC.
+ * Muestra un toast naranja prominente + aviso inline.
+ *
+ * REEMPLAZA la función _verificarRemitoGym() del app.js original.
+ */
 function _verificarRemitoGym(gymNombre) {
-    // Limpiar avisos anteriores (toast y aviso inline)
+    // Limpiar avisos anteriores
     ['aviso-remito', 'aviso-oc', 'toast-remito'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.remove();
@@ -418,41 +501,67 @@ function _verificarRemitoGym(gymNombre) {
         return;
     }
  
-    const gymNorm = gymNombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    // Encontrar el abono con mejor score de similitud
+    let mejorMatch  = null;
+    let mejorScore  = 0;
  
-    const abono = window.listaAbonosGlobal.find(a => {
-        const n = String(a.gym || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        return n === gymNorm || n.includes(gymNorm) || gymNorm.includes(n) ||
-               (gymNorm.length > 5 && n.split(' ').some(w => gymNorm.includes(w) && w.length > 4));
+    window.listaAbonosGlobal.forEach(abono => {
+        const score = _scoreGym(gymNombre, String(abono.gym || ''));
+        if (score > mejorScore) {
+            mejorScore  = score;
+            mejorMatch  = abono;
+        }
     });
  
-    if (!abono) return;
+    // No hay match suficientemente bueno → no mostrar nada
+    if (!mejorMatch || mejorScore < _UMBRAL_REMITO) return;
  
-    // ── Aviso inline (pequeño, debajo del buscador) ─────────
-    if (abono.pideRemito || abono.pideOC) {
-        const aviso = document.createElement("div");
-        aviso.id = "aviso-remito";
-        aviso.style.cssText = "background:#fff3e0; border-left:4px solid #ff9800; border-radius:10px; padding:14px 16px; margin-top:12px; display:flex; align-items:flex-start; gap:12px;";
-        let textoAviso = "";
-        if (abono.pideRemito) textoAviso += `<strong>${gymNombre}</strong> exige REMITO. Fotografialo antes de enviar.<br>`;
-        aviso.innerHTML = `
-            <span style="font-size:24px; flex-shrink:0;">📋</span>
-            <div>
-                <div style="font-weight:900; font-size:14px; color:#e65100; margin-bottom:5px;">⚠️ Documentación requerida</div>
-                <div style="font-size:13px; color:#bf360c; line-height:1.6;">${textoAviso}</div>
-            </div>`;
-        const cardGim = document.getElementById("card-gimnasio");
-        if (cardGim) cardGim.appendChild(aviso);
-    }
+    const necesitaRemito = mejorMatch.pideRemito === true;
+    const necesitaOC     = mejorMatch.pideOC === true;
  
-    // ── TOAST prominente (solo si pide remito) ─────────────
-    // Aparece arriba de la pantalla, dura 8 segundos, imposible ignorar.
-    if (abono.pideRemito) {
+    // Sin requisitos especiales → no hacer nada
+    if (!necesitaRemito && !necesitaOC) return;
+ 
+    // ── Aviso inline (debajo del buscador) ───────────────────
+    const aviso = document.createElement("div");
+    aviso.id = "aviso-remito";
+    aviso.style.cssText = [
+        "background:#fff3e0;",
+        "border-left:4px solid #ff9800;",
+        "border-radius:10px;",
+        "padding:14px 16px;",
+        "margin-top:12px;",
+        "display:flex;",
+        "align-items:flex-start;",
+        "gap:12px;",
+    ].join(" ");
+ 
+    let textoReq = [];
+    if (necesitaRemito) textoReq.push(`<strong>REMITO firmado</strong>`);
+    if (necesitaOC)     textoReq.push(`<strong>ORDEN DE COMPRA</strong>`);
+ 
+    aviso.innerHTML = `
+        <span style="font-size:24px; flex-shrink:0;">📋</span>
+        <div>
+            <div style="font-weight:900; font-size:14px; color:#e65100; margin-bottom:5px;">
+                ⚠️ Documentación requerida
+            </div>
+            <div style="font-size:13px; color:#bf360c; line-height:1.6;">
+                <strong>${gymNombre}</strong> exige: ${textoReq.join(' y ')}.<br>
+                <u>Fotografialo antes de enviar y adjuntalo como foto.</u>
+            </div>
+        </div>`;
+ 
+    const cardGim = document.getElementById("card-gimnasio");
+    if (cardGim) cardGim.appendChild(aviso);
+ 
+    // ── Toast prominente (solo si pide remito) ────────────────
+    if (necesitaRemito) {
         const toast = document.createElement("div");
         toast.id = "toast-remito";
         toast.style.cssText = [
             "position: fixed;",
-            "top: 70px;",          // debajo del top-nav
+            "top: 70px;",
             "left: 50%;",
             "transform: translateX(-50%);",
             "width: calc(100% - 32px);",
@@ -466,18 +575,16 @@ function _verificarRemitoGym(gymNombre) {
             "display: flex;",
             "align-items: center;",
             "gap: 14px;",
-            "animation: slideDown 0.3s ease;",
-            "cursor: pointer;",
         ].join(" ");
  
         toast.innerHTML = `
-            <div style="font-size:36px; flex-shrink:0; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">📋</div>
+            <div style="font-size:36px; flex-shrink:0;">📋</div>
             <div style="flex:1;">
                 <div style="font-weight:900; font-size:15px; margin-bottom:4px;">
                     ¡Este cliente requiere REMITO físico!
                 </div>
                 <div style="font-size:13px; opacity:0.92; line-height:1.5;">
-                    Antes de enviar, fotografiá el remito firmado y subilo como foto en el formulario.
+                    Fotografiá el remito firmado y subilo como foto en el formulario.
                 </div>
             </div>
             <button onclick="document.getElementById('toast-remito').remove()"
@@ -486,18 +593,16 @@ function _verificarRemitoGym(gymNombre) {
                            cursor:pointer; flex-shrink:0; font-weight:900;">✕</button>
         `;
  
-        // Click en el toast lo cierra también
-        toast.addEventListener('click', () => toast.remove());
+        toast.addEventListener('click', (e) => {
+            if (e.target === toast) toast.remove();
+        });
  
         document.body.appendChild(toast);
  
-        // Se cierra solo a los 8 segundos
+        // Auto-cerrar a los 8 segundos
         setTimeout(() => {
             const t = document.getElementById('toast-remito');
-            if (t) {
-                t.style.animation = 'slideUp 0.3s ease forwards';
-                setTimeout(() => t && t.remove(), 300);
-            }
+            if (t) t.remove();
         }, 8000);
     }
 }

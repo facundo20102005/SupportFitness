@@ -35,6 +35,66 @@ const PRECIOS_PRESUPUESTOS = {
     "Correas Elíptico": { precio: 194000, moneda: "ARS" }
 };
 
+const PRECIOS_POR_CATEGORIA = {
+ 
+    // ── 🔧 MANO DE OBRA ────────────────────────────────────────────
+    // Agregar nuevas visitas o servicios aquí ↓
+    "🔧 Mano de Obra": {
+        "Visita técnica para instalación + Mano de Obra": { precio: 160000, moneda: "ARS" },
+        // EJEMPLO PARA AGREGAR MÁS:
+        // "Visita técnica urgente": { precio: 220000, moneda: "ARS" },
+    },
+ 
+    // ── 🎽 CINTAS (Repuestos) ──────────────────────────────────────
+    // Bandas, tablas y rodillos para cintas de correr ↓
+    "🎽 Cintas de Correr": {
+        "Banda Cinta Importadas (Star Trac, Technogym, Uranium, Impulse, Precor)": { precio: 625,  moneda: "USD" },
+        "Banda de Cinta Nacional (Kip Machine, Olmo, Semikon)":                    { precio: 500,  moneda: "USD" },
+        "Tabla de Cinta":                                                           { precio: 500,  moneda: "USD" },
+        "Reparación Rodillos Delantero":                                            { precio: 235000, moneda: "ARS" },
+        "Reparación Rodillos Trasero":                                              { precio: 205000, moneda: "ARS" },
+        // AGREGAR MÁS REPUESTOS DE CINTAS AQUÍ ↓
+    },
+ 
+    // ── 🔌 CABLES DE ACERO ─────────────────────────────────────────
+    // Cables para máquinas de musculación ↓
+    "🔌 Cables de Acero": {
+        "Cable Acero Imp. Grueso c/ terminales": { precio: 22, moneda: "USD" },
+        "Cable Acero Nac. Grueso c/ terminales": { precio: 18, moneda: "USD" },
+        "Cable Acero Imp. Fino c/ terminales":   { precio: 20, moneda: "USD" },
+        "Cable Acero Nac. Fino c/ terminales":   { precio: 15, moneda: "USD" },
+        // AGREGAR NUEVOS CABLES AQUÍ ↓
+    },
+ 
+    // ── ⚙️ CORREAS ─────────────────────────────────────────────────
+    // Correas para bicicletas, elípticos y motores ↓
+    "⚙️ Correas": {
+        "Correas de Motor":            { precio: 149000, moneda: "ARS" },
+        "Correa Motor Life Fitness":   { precio: 178000, moneda: "ARS" },
+        "Correas Bici":                { precio: 179000, moneda: "ARS" },
+        "Correas Elíptico":            { precio: 194000, moneda: "ARS" },
+        // AGREGAR NUEVAS CORREAS AQUÍ ↓
+    },
+ 
+    // ── 🔬 ELECTRÓNICA / REPARACIONES ──────────────────────────────
+    // Placas, generadores y componentes electrónicos ↓
+    "🔬 Electrónica": {
+        "Reparación Placas MCB":                 { precio: 600000, moneda: "ARS" },
+        "Reparación Generador (Bici/Elíptico)":  { precio: 380000, moneda: "ARS" },
+        // AGREGAR NUEVAS REPARACIONES ELECTRÓNICAS AQUÍ ↓
+    },
+ 
+    // ── 🧴 CONSUMIBLES ──────────────────────────────────────────────
+    // Lubricantes, baterías y elementos descartables ↓
+    "🧴 Consumibles": {
+        "Bateria Interna 6v 4Ah": { precio: 84600,  moneda: "ARS" },
+        "Litro de Lubricante":    { precio: 92000,  moneda: "ARS" },
+        "Mosquetones":     { precio: 15000,   moneda: "ARS" },
+        "Registro de doble acción": { precio: 42000,  moneda: "ARS" },
+        // AGREGAR NUEVOS CONSUMIBLES AQUÍ ↓
+    },
+};
+
 let modoApp = 'ofertas'; 
 const HOJA_OFERTAS = "Ofertas de Mantenimiento";
 const HOJA_PRESUPUESTOS = "Presupuestos de Reparacion";

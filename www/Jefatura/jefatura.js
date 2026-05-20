@@ -35,17 +35,36 @@ function normalizar(str) {
     return str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
 }
 
-// FIX: matching flexible — maneja "CONSORCIO LIVE HOTEL" vs "Consorcio Live Hotel"
-// Compara normalizando, usando includes bidireccional, o palabras clave en común.
+// Expande abreviaturas comunes antes de comparar
+function _normGym(str) {
+    return normalizar(str || '')
+        .replace(/\bcons\.?\b/g,   'consorcio')
+        .replace(/\bprop\.?\b/g,   'propietarios')
+        .replace(/\bcoprops?\.?\b/g, 'copropietarios')
+        .replace(/[.,\-\/\\()\[\]]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+ 
 function gymCoincide(gymHistorial, gymCronograma) {
     if (!gymHistorial || !gymCronograma) return false;
-    const a = normalizar(String(gymHistorial));
-    const b = normalizar(String(gymCronograma));
+    const a = _normGym(gymHistorial);
+    const b = _normGym(gymCronograma);
+ 
+    // 1. Coincidencia exacta después de normalizar (lo más confiable)
     if (a === b) return true;
-    if (a.includes(b) || b.includes(a)) return true;
-    // Coincidencia por palabras significativas (longitud > 4)
-    const palabrasB = b.split(/\s+/).filter(w => w.length > 4);
-    return palabrasB.length > 0 && palabrasB.every(w => a.includes(w));
+ 
+    // 2. Uno contiene al otro COMPLETAMENTE (no substring parcial de una palabra)
+    //    Mínimo 10 chars para evitar falsos positivos con nombres cortos
+    //    Ejemplo válido:    "consorcio torre oro" ⊂ "consorcio torre oro 2" → TRUE
+    //    Ejemplo inválido:  "consorcio torre oro" ⊄ "consorcio torre gelly 3650" → FALSE
+    const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+    if (shorter.length >= 10 && longer.includes(shorter)) return true;
+ 
+    return false;
+    // FIX: ELIMINADO el bloque de palabras sueltas (era el causante del bug)
+    // Antes: "tower".length>4 && "consorcio torre gelly".includes("torre") → TRUE (incorrecto)
+    // Ahora: no se hace esa comparación → FALSE (correcto)
 }
 
 // FIX: motivo preventivo — ya NO incluye motivos vacíos como preventivos
@@ -726,65 +745,201 @@ function exportarClientesExcel() {
         mostrarAlerta("No hay datos de clientes cargados todavía.");
         return;
     }
+ 
     const existing = document.getElementById("_modal-clientes");
-    if (existing) { existing.remove(); }
+    if (existing) existing.remove();
+ 
     const abonos = window.listaAbonosGlobal;
     const total  = abonos.reduce((acc, a) => acc + (Number(a.precio) || 0), 0);
     const fmtARS = n => "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-
-    const filas = abonos.map((a, i) => `
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.06)">
-            <td style="padding:8px 10px;font-weight:700;color:#94a3b8;font-size:12px;">${i+1}</td>
+ 
+    // ── Mes y año actual (el que se está viendo en el calendario) ──
+    const mesActual = fechaVistaJefatura.getMonth(); // 0-indexed
+    const añoActual = fechaVistaJefatura.getFullYear();
+    const mesesNombres = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    const mesLabel = mesesNombres[mesActual] + " " + añoActual;
+ 
+    // ── Normalización para comparar gyms con historialGlobal ──────
+    // historialGlobal.gym viene normalizado del backend (lowercase, sin tildes, sin símbolos)
+    function normBackend(s) {
+        return (s || '').toLowerCase().normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[<>:"/\\|?*]+/g, "")
+            .replace(/\s+/g, " ").trim();
+    }
+ 
+    // ── Determinar si el gym tuvo visita este mes ─────────────────
+    // Usa historialGlobal (ya cargado en memoria al abrir Jefatura)
+    function tieneVisitaMes(abonoGym) {
+        if (!historialGlobal || historialGlobal.length === 0) return null; // desconocido
+        const gymNorm = normBackend(abonoGym);
+        return historialGlobal.some(v =>
+            v.gym === gymNorm &&
+            Number(v.mes) === mesActual &&
+            Number(v.año) === añoActual
+        );
+    }
+ 
+    // ── Construir filas ───────────────────────────────────────────
+    const filas = abonos.map((a, i) => {
+        const visitoMes = tieneVisitaMes(a.gym); // true / false / null
+ 
+        // Badge de estado del mes
+        let badgeMes = '';
+        if (visitoMes === true && a.pideRemito) {
+            badgeMes = `<span title="Visitado + Remito en ${mesLabel}"
+                style="background:#0d4f2e;color:#4ade80;border:1px solid #16a34a;
+                       padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;">
+                ✅ OK + 🧾
+            </span>`;
+        } else if (visitoMes === true) {
+            badgeMes = `<span title="Visitado en ${mesLabel}"
+                style="background:#0d4f2e;color:#4ade80;border:1px solid #16a34a;
+                       padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;">
+                ✅
+            </span>`;
+        } else if (visitoMes === false && a.pideRemito) {
+            badgeMes = `<span title="Sin visita ni remito en ${mesLabel}"
+                style="background:#4a0e0e;color:#f87171;border:1px solid #dc2626;
+                       padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;">
+                ❌ 🧾
+            </span>`;
+        } else if (visitoMes === false) {
+            badgeMes = `<span title="Sin visita en ${mesLabel}"
+                style="background:#1e1e1e;color:#64748b;border:1px solid #334155;
+                       padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;">
+                —
+            </span>`;
+        } else {
+            badgeMes = `<span style="color:#475467;font-size:11px;">?</span>`;
+        }
+ 
+        // ── Email: botón que muestra/oculta ───────────────────────
+        const emailId = `_email-${i}`;
+        const emailBtn = a.correo
+            ? `<button onclick="
+                    var el=document.getElementById('${emailId}');
+                    var showing=el.style.display!=='none';
+                    el.style.display=showing?'none':'block';
+                    this.textContent=showing?'📧 Ver':'📧 Ocultar';
+                "
+                style="background:#1e3a5f;color:#60a5fa;border:1px solid rgba(96,165,250,0.3);
+                       padding:4px 9px;border-radius:6px;font-size:11px;font-weight:700;
+                       cursor:pointer;white-space:nowrap;">
+                📧 Ver
+              </button>
+              <div id="${emailId}" style="display:none;margin-top:4px;font-size:11px;
+                   color:#94a3b8;word-break:break-all;max-width:240px;line-height:1.4;">
+                  ${a.correo}
+                  <button onclick="navigator.clipboard.writeText('${(a.correo||'').replace(/'/g,"\\'").replace(/"/g,"&quot;")}').then(()=>{this.textContent='✅';setTimeout(()=>this.textContent='📋',1500);})"
+                          style="background:none;border:none;cursor:pointer;font-size:13px;
+                                 padding:2px;vertical-align:middle;" title="Copiar">📋</button>
+              </div>`
+            : '<span style="color:#475467;font-size:11px;">Sin correo</span>';
+ 
+        return `<tr data-gym="${(a.gym||'').toLowerCase()}"
+                    style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <td style="padding:8px 10px;color:#94a3b8;font-size:12px;font-weight:700;">${i+1}</td>
             <td style="padding:8px 10px;font-weight:900;font-size:13px;">${a.gym || "—"}</td>
             <td style="padding:8px 10px;font-size:12px;color:#94a3b8;">${a.tipoFact || "—"}</td>
             <td style="padding:8px 10px;font-size:12px;color:#94a3b8;">${a.cuit || "—"}</td>
-            <td style="padding:8px 10px;font-size:12px;">
-                <div style="display:flex;align-items:center;gap:6px;max-width:200px;">
-                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${a.correo||''}">${a.correo || "—"}</span>
-                    ${a.correo ? `<button onclick="navigator.clipboard.writeText('${(a.correo||'').replace(/'/g,"\\'")}').then(()=>{this.textContent='✅';setTimeout(()=>this.textContent='📋',1500);})" style="background:none;border:none;cursor:pointer;font-size:13px;flex-shrink:0;padding:2px;" title="Copiar correo">📋</button>` : ''}
-                </div>
-            </td>
-            <td style="padding:8px 10px;font-weight:900;color:#34d399;text-align:right;">${fmtARS(a.precio || 0)}</td>
-            <td style="padding:8px 10px;text-align:center;font-size:12px;">${a.pideRemito ? "✅" : "—"}</td>
-        </tr>
-    `).join('');
-
+            <td style="padding:8px 10px;font-size:12px;">${emailBtn}</td>
+            <td style="padding:8px 10px;font-weight:900;color:#34d399;text-align:right;">${fmtARS(a.precio||0)}</td>
+            <td style="padding:8px 10px;text-align:center;">${badgeMes}</td>
+        </tr>`;
+    }).join('');
+ 
+    // ── Modal ─────────────────────────────────────────────────────
     const modal = document.createElement("div");
     modal.id = "_modal-clientes";
-    modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;";
+    modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;backdrop-filter:blur(4px);";
+ 
     modal.innerHTML = `
-        <div style="background:#1e293b;border-radius:18px;width:100%;max-width:900px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.5);margin:auto;">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:linear-gradient(135deg,#0f9d58,#0b7a42);">
+        <div style="background:#1e293b;border-radius:18px;width:100%;max-width:960px;
+                    border:1px solid rgba(255,255,255,0.08);overflow:hidden;
+                    box-shadow:0 25px 60px rgba(0,0,0,0.5);margin:auto;">
+ 
+            <!-- Header -->
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                        padding:18px 22px;background:linear-gradient(135deg,#0f9d58,#0b7a42);">
                 <div>
                     <div style="font-size:18px;font-weight:900;color:white;">📊 Clientes Activos</div>
-                    <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:2px;">${abonos.length} clientes · Total mensual: ${fmtARS(total)}</div>
+                    <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px;">
+                        ${abonos.length} clientes · Total mensual: ${fmtARS(total)}
+                        &nbsp;·&nbsp;Mes vista: <b>${mesLabel}</b>
+                    </div>
                 </div>
-                <button onclick="document.getElementById('_modal-clientes').remove()" style="background:rgba(255,255,255,0.2);border:none;color:white;width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;font-weight:900;">✕</button>
+                <button onclick="document.getElementById('_modal-clientes').remove()"
+                        style="background:rgba(255,255,255,0.2);border:none;color:white;
+                               width:36px;height:36px;border-radius:50%;font-size:18px;
+                               cursor:pointer;font-weight:900;">✕</button>
             </div>
-            <div style="overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;font-family:inherit;">
-                    <thead>
-                        <tr style="background:rgba(255,255,255,0.04);">
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">#</th>
+ 
+            <!-- Leyenda de colores -->
+            <div style="padding:8px 20px;background:rgba(255,255,255,0.02);
+                        border-bottom:1px solid rgba(255,255,255,0.05);
+                        display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:#64748b;">
+                <span>✅ = Visitado este mes</span>
+                <span>✅ + 🧾 = Visitado + requiere remito</span>
+                <span>❌ 🧾 = Sin visita (requiere remito)</span>
+                <span>— = Sin visita registrada</span>
+            </div>
+ 
+            <!-- Buscador -->
+            <div style="padding:10px 20px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                <input type="text" placeholder="🔍 Buscar cliente..."
+                       oninput="_filtrarClientesModal(this.value)"
+                       style="width:100%;padding:9px 14px;border-radius:8px;
+                              border:1.5px solid rgba(255,255,255,0.1);
+                              background:rgba(255,255,255,0.05);color:#f1f5f9;
+                              font-size:13px;outline:none;box-sizing:border-box;"
+                       autocomplete="off">
+            </div>
+ 
+            <!-- Tabla -->
+            <div style="overflow-x:auto;max-height:65vh;overflow-y:auto;">
+                <table id="_tabla-clientes" style="width:100%;border-collapse:collapse;font-family:inherit;">
+                    <thead style="position:sticky;top:0;z-index:2;">
+                        <tr style="background:#1a2535;">
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;white-space:nowrap;">#</th>
                             <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CLIENTE</th>
                             <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">FACT.</th>
                             <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CUIT</th>
                             <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CORREO</th>
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:right;">PRECIO/MES</th>
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:center;">REMITO</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:right;white-space:nowrap;">PRECIO/MES</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:center;white-space:nowrap;">${mesLabel}</th>
                         </tr>
                     </thead>
                     <tbody style="color:#f1f5f9;">${filas}</tbody>
                 </table>
             </div>
-            <div style="padding:14px 22px;background:rgba(0,0,0,0.2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                <span style="font-size:13px;color:#64748b;">Total mensual estimado: <strong style="color:#34d399;">${fmtARS(total)}</strong></span>
-                <button onclick="document.getElementById('_modal-clientes').remove()" style="background:#334155;border:none;color:white;padding:8px 18px;border-radius:8px;font-weight:800;cursor:pointer;font-size:13px;">Cerrar</button>
+ 
+            <!-- Footer -->
+            <div style="padding:14px 22px;background:rgba(0,0,0,0.2);
+                        display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <span style="font-size:13px;color:#64748b;">
+                    Total mensual estimado: <strong style="color:#34d399;">${fmtARS(total)}</strong>
+                </span>
+                <button onclick="document.getElementById('_modal-clientes').remove()"
+                        style="background:#334155;border:none;color:white;padding:8px 18px;
+                               border-radius:8px;font-weight:800;cursor:pointer;font-size:13px;">
+                    Cerrar
+                </button>
             </div>
         </div>
     `;
+ 
     modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
+}
+ 
+// Filtrado en tiempo real del buscador del modal
+function _filtrarClientesModal(texto) {
+    const q = texto.toLowerCase().trim();
+    document.querySelectorAll('#_tabla-clientes tbody tr').forEach(tr => {
+        const gym = tr.dataset.gym || '';
+        tr.style.display = (!q || gym.includes(q)) ? '' : 'none';
+    });
 }
 
 // ── Init ──────────────────────────────────────────────────
