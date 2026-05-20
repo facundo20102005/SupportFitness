@@ -91,6 +91,7 @@ const PRECIOS_POR_CATEGORIA = {
         "Litro de Lubricante":    { precio: 92000,  moneda: "ARS" },
         "Mosquetones":     { precio: 15000,   moneda: "ARS" },
         "Registro de doble acción": { precio: 42000,  moneda: "ARS" },
+        "Cadenas Spinner 112L pro (Bicicleta)": { precio: 44, moneda: "USD" },
         // AGREGAR NUEVOS CONSUMIBLES AQUÍ ↓
     },
 };
