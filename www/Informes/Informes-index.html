@@ -9,11 +9,19 @@
     <link rel="stylesheet" href="../style.css">
     <script src="../nav.js"></script>
     <!-- ══ Módulos de la app (cargar en orden) ══════════════════ -->
-    <script src="inf-config.js"></script>    <!-- Constantes, API_URL, precios   -->
-    <script src="inf-api.js"></script>       <!-- llamarAPI, auth, obtenerDolar   -->
-    <script src="inf-ui.js"></script>        <!-- setModoApp, burbuja, cargarApp  -->
-    <script src="inf-docs.js"></script>      <!-- docs, items, PDF, modales       -->
-    <script src="inf-abonos.js" defer></script> <!-- abonos mensuales            -->
+    <!--
+        VERSIONADO DE CACHE:
+        Incrementar el número ?v=X cada vez que se haga deploy a producción.
+        Esto fuerza al Service Worker (Cache-First) y al CDN de Vercel a
+        descartar la versión cacheada y obtener el archivo actualizado.
+        El parámetro no altera el contenido del archivo, solo invalida la caché.
+        Versión actual: v7 (19/05/2025)
+    -->
+    <script src="inf-config.js?v=7"></script>    <!-- Constantes, API_URL, precios   -->
+    <script src="inf-api.js?v=7"></script>        <!-- llamarAPI, auth, obtenerDolar   -->
+    <script src="inf-ui.js?v=7"></script>         <!-- setModoApp, burbuja, cargarApp  -->
+    <script src="inf-docs.js?v=7"></script>       <!-- docs, items, PDF, modales       -->
+    <script src="inf-abonos.js?v=7" defer></script> <!-- abonos mensuales            -->
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -1142,7 +1150,28 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
+          // Ruta absoluta desde la raíz del sitio — funciona igual en
+          // cualquier subdominio de Vercel (producción o preview).
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(reg => {
+              // Si hay un SW esperando (nueva versión disponible),
+              // avisarle que tome control inmediatamente.
+              if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'skipWaiting' });
+              }
+              reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                if (newWorker) {
+                  newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      // Nuevo SW instalado: recargar para activarlo
+                      newWorker.postMessage({ type: 'skipWaiting' });
+                      window.location.reload();
+                    }
+                  });
+                }
+              });
+            })
             .catch(() => {});
         });
       }
