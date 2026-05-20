@@ -85,13 +85,13 @@ const PRECIOS_POR_CATEGORIA = {
     "🔬 Electrónica": {
         "Reparación Placas MCB":                 { precio: 600000, moneda: "ARS" },
         "Reparación Generador (Bici/Elíptico)":  { precio: 380000, moneda: "ARS" },
+        "Bateria Interna 6v 4Ah": { precio: 84600,  moneda: "ARS" },
         // AGREGAR NUEVAS REPARACIONES ELECTRÓNICAS AQUÍ ↓
     },
  
     // ── 🧴 CONSUMIBLES ──────────────────────────────────────────────
     // Lubricantes, baterías y elementos descartables ↓
     "🧴 Consumibles": {
-        "Bateria Interna 6v 4Ah": { precio: 84600,  moneda: "ARS" },
         "Litro de Lubricante":    { precio: 92000,  moneda: "ARS" },
         "Mosquetones":     { precio: 15000,   moneda: "ARS" },
         "Registro de doble acción": { precio: 42000,  moneda: "ARS" },
