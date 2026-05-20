@@ -32,7 +32,11 @@ const PRECIOS_PRESUPUESTOS = {
     "Correa Motor Life Fitness": { precio: 178000, moneda: "ARS" },
     "Reparación Generador (Bici/Elíptico)": { precio: 380000, moneda: "ARS" },
     "Correas Bici": { precio: 179000, moneda: "ARS" },
+    "Cadenas Spinner 112L pro (Bicicleta)": { precio: 44, moneda: "USD" },
+    "Registro de doble acción": { precio: 42000,  moneda: "ARS" },
+    "Mosquetones":     { precio: 15000,   moneda: "ARS" },
     "Correas Elíptico": { precio: 194000, moneda: "ARS" }
+    
 };
 
 const PRECIOS_POR_CATEGORIA = {
