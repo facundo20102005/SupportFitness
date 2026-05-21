@@ -195,6 +195,7 @@ function eliminarPendienteBD(id) {
 // --- SISTEMA DE AVISOS PERSONALIZADO ---
 let callbackConfirmacion = null;
 function mostrarAlerta(mensaje) { document.getElementById('msg-alerta').innerText = mensaje; document.getElementById('modalAlerta').style.display = 'flex'; }
+function cerrarAlerta() { document.getElementById('modalAlerta').style.display = 'none'; }
 function mostrarConfirmacion(mensaje, callback) { document.getElementById('msg-confirmacion').innerText = mensaje; callbackConfirmacion = callback; document.getElementById('modalConfirmacion').style.display = 'flex'; }
 function cerrarConfirmacion(confirmado) { document.getElementById('modalConfirmacion').style.display = 'none'; if (callbackConfirmacion) callbackConfirmacion(confirmado); callbackConfirmacion = null; }
 
@@ -335,48 +336,25 @@ const cronogramaZonas = [
     { zona: "Zona 5", clientes: [{ nombre: "COUNTRY EL CARMEL (Pilar)", freq: "Mensual" }, { nombre: "COUNTRY LA DELFINA", freq: "Mensual" }, { nombre: "COUNTRY PILAR DEL LAGO", freq: "Mensual" }, { nombre: "BARRIO LA LOMADA PILAR", freq: "Mensual" }, { nombre: "CLUB ARMENIA (Pilar)", freq: "Mensual" }, { nombre: "46 PLAZA PILAR (CAMAGNO)", freq: "Mensual" }, { nombre: "BARRIO MI REFUGIO (Canning)", freq: "Mensual" }, { nombre: "CONSORCIO DE PROP COUNTRY GOLF EL SOSIEGO", freq: "Mensual" }, { nombre: "GIMNASIO OLIMPO SPA (La Plata)", freq: "Mensual" }, { nombre: "VILA POINT BENAVIDEZ", freq: "Mensual" }, { nombre: "GIMNASIO GRACIELA", freq: "Mensual" }] }
 ];
 
-let archivosSeleccionados = [];
+window.archivosSeleccionados = []; // Ahora es global para que index.html la pueda leer
 let historialGlobal    = [];
 let añoVistaActual     = new Date().getFullYear();
 
-// ── Navegación: index.html solo tiene el formulario.
-//    Tapizados, Jefatura e Institucional viven en sus propias carpetas.
-function intentarAbrirJefatura()     { NavBar.navegarA('jefatura'); }
-function intentarAbrirTapizados()    { NavBar.navegarA('tapizados'); }
-function intentarAbrirInformes()     { NavBar.navegarA('informes'); }
-function abrirInicio()               { NavBar.navegarA('institucional'); }
-
-// cerrarVistas: en index.html el formulario ES la vista principal, simplemente lo mostramos
-function cerrarVistas() {
-    const form = document.getElementById('vista-formulario');
-    if (form) form.style.display = 'flex';
-}
-
-// ── Historial anual (accesible desde el botón en el nav) ──────────────────
-// --- NUEVO SISTEMA DE COMPRESIÓN DE IMÁGENES AUTOMÁTICO ---
+// --- NUEVO SISTEMA DE PREVIEW AUTOMÁTICO ---
 document.getElementById('archivo-oculto').addEventListener('change', function (e) {
-    for (let i = 0; i < this.files.length; i++) { archivosSeleccionados.push(this.files[i]); }
+    for (let i = 0; i < this.files.length; i++) { 
+        window.archivosSeleccionados.push(this.files[i]); 
+    }
     this.value = "";
-    renderizarArchivos();
+    if (window._renderizarFotos) window._renderizarFotos(window.archivosSeleccionados);
+    if (typeof actualizarProgress === 'function') actualizarProgress(); // Actualiza progreso visual en el formulario
 });
 
-function renderizarArchivos() {
-    // Usar el renderer mejorado del HTML si está disponible
-    if (window._renderizarFotos) {
-        window._renderizarFotos(archivosSeleccionados);
-        return;
-    }
-    // Fallback original
-    let divLista = document.getElementById('lista-archivos');
-    divLista.innerHTML = "";
-    archivosSeleccionados.forEach((archivo, index) => {
-        let item = document.createElement("div");
-        item.className = "archivo-item";
-        item.innerHTML = `<span class="archivo-item-name">📄 ${archivo.name}</span><span class="archivo-item-delete" onclick="eliminarArchivo(${index})" title="Eliminar archivo">✖</span>`;
-        divLista.appendChild(item);
-    });
-}
-function eliminarArchivo(index) { archivosSeleccionados.splice(index, 1); renderizarArchivos(); }
+window.eliminarArchivo = function(index) { 
+    window.archivosSeleccionados.splice(index, 1); 
+    if (window._renderizarFotos) window._renderizarFotos(window.archivosSeleccionados);
+    if (typeof actualizarProgress === 'function') actualizarProgress();
+};
 function toggleHistorial() { const panel = document.getElementById("contenedor-meses"); const btn = document.getElementById("btnToggle"); if (panel.classList.contains("mostrar-en-movil")) { panel.classList.remove("mostrar-en-movil"); btn.innerText = "Ver Historial de Visitas ▼"; } else { panel.classList.add("mostrar-en-movil"); btn.innerText = "Ocultar Historial ▲"; } }
 function mostrarLista(listaFiltrada, mostrar) { let listaContainer = document.getElementById("lista"); listaContainer.innerHTML = ""; if (!mostrar || listaFiltrada.length === 0) { listaContainer.style.display = "none"; return; } listaContainer.style.display = "block"; listaFiltrada.forEach(g => { let item = document.createElement("div"); item.className = "gym-list-item"; item.innerText = g; item.addEventListener('mousedown', function (e) { e.preventDefault(); }); item.onclick = () => seleccionar(g); listaContainer.appendChild(item); }); }
 function normalizar(str) { return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
@@ -841,7 +819,6 @@ async function enviarFormulario() {
     mostrarStatus("Obteniendo ubicación... 📍", "cargando"); 
     
     const ubicacion = await obtenerUbicacion(); 
-    mostrarStatus("Preparando envío... ⏳", "cargando");
     
     const gymFinal = document.getElementById("buscador").value.trim() || document.getElementById("otroGimnasio").value.trim(); 
     const esNuevoGimnasio = !gimnasios.some(g => normalizar(g) === normalizar(gymFinal));
@@ -851,6 +828,27 @@ async function enviarFormulario() {
     if (valReparacion === "Si") { 
         valTapizado = document.querySelector('input[name="tapizado"]:checked') ? document.querySelector('input[name="tapizado"]:checked').value : "No"; 
     }
+
+    // ─── CORRECCIÓN CRÍTICA: COMPRIMIR Y EMPAQUETAR FOTOS ───
+    mostrarStatus("Comprimiendo fotos... 📸", "cargando");
+    const archivosProcesados = [];
+    if (window.archivosSeleccionados && window.archivosSeleccionados.length > 0) {
+        for (let i = 0; i < window.archivosSeleccionados.length; i++) {
+            let file = window.archivosSeleccionados[i];
+            try {
+                let base64 = await leerYComprimirArchivoAsincrono(file);
+                archivosProcesados.push({
+                    name: file.name || `foto_adjunta_${i}.jpg`,
+                    mimeType: file.type || 'image/jpeg',
+                    base64Data: base64
+                });
+            } catch (err) {
+                console.warn("No se pudo comprimir la foto", err);
+            }
+        }
+    }
+    
+    mostrarStatus("Preparando envío... ⏳", "cargando");
     
     const data = { 
         tecnico: document.getElementById("tecnico").value.trim(), 
@@ -862,10 +860,9 @@ async function enviarFormulario() {
         tapizado: valTapizado, 
         lat: ubicacion.lat, 
         lng: ubicacion.lng, 
-        archivos: [] 
+        archivos: archivosProcesados // <-- AHORA SÍ VIAJAN LAS FOTOS AL BACKEND
     };
     
-    // Si no hay conexión, guarda en IndexedDB local
     const guardarLocal = async () => { 
         try { 
             await guardarOfflineBD(data); 
@@ -883,8 +880,6 @@ async function enviarFormulario() {
     mostrarStatus("Enviando datos a la nube... ☁️", "cargando");
     llamarAPI({ accion: "procesarYGuardarTodo", payload: data })
         .then((respuesta) => {
-            // El backend devuelve "Remito R-XXXX creado" — renombrar para no confundir
-            // con el remito físico que el técnico debe subir
             const numR = (respuesta.match(/R-\d+/) || [''])[0];
             const msgFinal = numR
                 ? `✅ Visita registrada correctamente (Registro ${numR})`
@@ -938,8 +933,40 @@ async function sincronizarOffline() {
     }
 }
 
-function reiniciarFormulario() { document.getElementById("visitaForm").reset(); archivosSeleccionados = []; renderizarArchivos(); mostrarLista([], false); document.getElementById("ghost").innerHTML = ""; let savedTecnico = localStorage.getItem("tecnico"); if (savedTecnico) document.getElementById("tecnico").value = savedTecnico; document.getElementById("tecnico").classList.remove("error-input"); document.getElementById("buscador").classList.remove("error-input"); document.getElementById("otroGimnasio").classList.remove("error-input"); document.getElementById("card-motivo").style.border = "none"; document.getElementById("box-tapizado").style.display = "none"; cargarPanelHistorial(); setTimeout(() => { document.getElementById("btnEnviar").disabled = false; document.getElementById("status").className = "status"; window.scrollTo({ top: 0, behavior: 'smooth' }); }, 5000); }
+function reiniciarFormulario() { 
+    document.getElementById("visitaForm").reset(); 
+    window.archivosSeleccionados = []; 
+    if (window._renderizarFotos) window._renderizarFotos(window.archivosSeleccionados);
+    mostrarLista([], false); 
+    document.getElementById("ghost").innerHTML = ""; 
+    
+    let savedTecnico = localStorage.getItem("tecnico"); 
+    if (savedTecnico) document.getElementById("tecnico").value = savedTecnico; 
+    
+    document.getElementById("tecnico").classList.remove("error-input"); 
+    document.getElementById("buscador").classList.remove("error-input"); 
+    document.getElementById("otroGimnasio").classList.remove("error-input"); 
+    document.getElementById("card-motivo").style.border = "none"; 
+    document.getElementById("box-tapizado").style.display = "none"; 
+    
+    // Limpieza de etiquetas personalizadas de motivos
+    if (typeof otrosMotivosArray !== 'undefined') {
+        otrosMotivosArray = [];
+        if (typeof actualizarUIOtrosMotivos === 'function') {
+            actualizarUIOtrosMotivos();
+        }
+    }
+    localStorage.removeItem('borrador_otros_motivos');
 
+    cargarPanelHistorial(); 
+    if (typeof actualizarProgress === 'function') actualizarProgress(); // Reinicia los puntitos verdes de pasos
+    
+    setTimeout(() => { 
+        document.getElementById("btnEnviar").disabled = false; 
+        document.getElementById("status").className = "status"; 
+        window.scrollTo({ top: 0, behavior: 'smooth' }); 
+    }, 5000); 
+}
 // ============================================================
 //   SISTEMA DE "OTROS MOTIVOS" MÚLTIPLES (ETIQUETAS)
 // ============================================================
@@ -1050,47 +1077,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function reiniciarFormulario() { 
-    document.getElementById("visitaForm").reset(); 
-    archivosSeleccionados = []; 
-    renderizarArchivos(); 
-    mostrarLista([], false); 
-    document.getElementById("ghost").innerHTML = ""; 
-    
-    let savedTecnico = localStorage.getItem("tecnico"); 
-    if (savedTecnico) document.getElementById("tecnico").value = savedTecnico; 
-    
-    document.getElementById("tecnico").classList.remove("error-input"); 
-    document.getElementById("buscador").classList.remove("error-input"); 
-    document.getElementById("otroGimnasio").classList.remove("error-input"); 
-    document.getElementById("card-motivo").style.border = "none"; 
-    document.getElementById("box-tapizado").style.display = "none"; 
-    
-    if (typeof otrosMotivosArray !== 'undefined') {
-        otrosMotivosArray = [];
-        if (typeof actualizarUIOtrosMotivos === 'function') {
-            actualizarUIOtrosMotivos();
-        }
-    }
-    localStorage.removeItem('borrador_otros_motivos');
-
-    cargarPanelHistorial(); 
-    
-    setTimeout(() => { 
-        document.getElementById("btnEnviar").disabled = false; 
-        document.getElementById("status").className = "status"; 
-        window.scrollTo({ top: 0, behavior: 'smooth' }); 
-    }, 5000); 
-}
-// =========================================================================
-// 🔥 MODO OSCURO (DARK MODE) 🔥
-// =========================================================================
-function toggleDarkMode() {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    localStorage.setItem('darkMode', isDark ? 'yes' : 'no');
-    document.getElementById('btn-dark-mode').innerText = isDark ? '☀️' : '🌙';
-}
 // =========================================================================
 // 🔥 FORZAR ACTUALIZACIÓN DEL HISTORIAL (CUANDO SE EDITA EL EXCEL A MANO) 🔥
 // =========================================================================

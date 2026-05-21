@@ -29,7 +29,7 @@ const PRECACHE = [
     '/Jefatura/jefatura.js',
     '/Tapizados/index.html',
     '/Tapizados/tapizados.js',
-    '/assets/Logoparapdf.jpeg',
+    '/assets/Logoparapdf.png',
     '/assets/StarTrac.png',
     '/assets/Spinning.png',
     '/assets/Octane.png',
