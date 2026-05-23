@@ -4,7 +4,6 @@ const VERSION_APP = 1.0;
 
 // --- VARIABLES Y FUNCIONES RECUPERADAS ---
 let valorDolarOficial = 1000;
-let cacheHistorial = [];
 let fechaSeleccionadaOriginal = "";
 let globalGymsOfertas = [];
 let globalGymsPresupuestos = [];
@@ -43,7 +42,7 @@ async function cargarDatosBase() {
             let exists = combined.some(v => v.gym === n.gym && v.año === n.año && v.mes === n.mes && v.dia === n.dia);
             if (!exists) combined.push(n);
         });
-        cacheHistorial = combined;
+        historialGlobal = combined;
 
         // Guardar el cronograma dinámico si se cargó correctamente
         if (resultadoAnual.zonas && resultadoAnual.zonas.length > 0) {
@@ -289,18 +288,10 @@ window.addEventListener('load', async () => {
 
     if (vistaSolicitada === 'jefatura') {
         setTimeout(intentarAbrirJefatura, 500);
-    } else if (vistaSolicitada === 'tapizados') {
-        setTimeout(intentarAbrirTapizados, 500);
     }
 });
 
-document.querySelectorAll('input[name="reparacion"]').forEach(radio => {
-    radio.addEventListener('change', function () {
-        const boxTapizado = document.getElementById('box-tapizado');
-        if (this.value === 'Si') { boxTapizado.style.display = 'block'; } 
-        else { boxTapizado.style.display = 'none'; document.querySelector('input[name="tapizado"][value="No"]').checked = true; }
-    });
-});
+
 
 let gimnasios = [
     "46 PLAZA PILAR (CAMAGNO)", "Administracion Barrio Privado la lomada", "Always Club 1 (Guatemala)", "Always Club 2 (Costa Rica)",
@@ -317,7 +308,7 @@ let gimnasios = [
     "Consorcio Malabia 444", "CONSORCIO MEDRANO 820", "CONSORCIO MIRADORES DE LA BAHIA", "Consorcio Palacio Alcorta", "Consorcio Palermo 1 (Uriarte)",
     "Consorcio Paraguay 4747 (Town House)", "Consorcio Paraguay 4871 (Godoy Cruz)", "Consorcio Premier Rodriguez Peña", "CONSORCIO PROP. LIBERTADOR 1235/1265 WAVE",
     "CONSORCIO PROPIETARIOS RIO DE JANEIRO 259", "CONSORCIO QUANTUM BERUTI", "CONSORCIO QUARTIER DE MARIA", "Consorcio Riobamba 1261",
-    "CONSORCIO ROSALES 2575", "Consorcio Ruggieri 2935 (Cerviño)", "Consorcio Ruggieri 3045", "CONSORCIO SEGUI 4602", "Consorcio Segui 3672",
+    "CONSORCIO ROSALES 2575", "Consorcio Ruggieri 2935 (Cerviño)", "Consorcio Ruggieri 3045", "CONSORCIO SEGUI 4602",
     "CONSORCIO SUITCH (Medrano 1020)", "Consorcio Torre Gelly 3650", "CONSORCIO TORRE ORO", "CONSORCIO TORRES DEL YACHT NORTE",
     "CONSORCIO TORRES DEL YACHT SUR", "CONSORCIO VIRREY DEL PINO 1769", "CONSORCIO WAVE LIBERTADOR", "CONSORCIO WOW (Nuñez 2422)",
     "COUNTRY BAHIA DEL SOL", "COUNTRY EL CARMEL (Pilar)", "COUNTRY LA DELFINA", "COUNTRY PILAR DEL LAGO", "DHL EXPRESS (Av. Larrazabal)",
@@ -823,11 +814,7 @@ async function enviarFormulario() {
     const gymFinal = document.getElementById("buscador").value.trim() || document.getElementById("otroGimnasio").value.trim(); 
     const esNuevoGimnasio = !gimnasios.some(g => normalizar(g) === normalizar(gymFinal));
     
-    let valReparacion = document.querySelector('input[name="reparacion"]:checked') ? document.querySelector('input[name="reparacion"]:checked').value : ""; 
-    let valTapizado = "No"; 
-    if (valReparacion === "Si") { 
-        valTapizado = document.querySelector('input[name="tapizado"]:checked') ? document.querySelector('input[name="tapizado"]:checked').value : "No"; 
-    }
+    let valReparacion = document.querySelector('input[name="reparacion"]:checked') ? document.querySelector('input[name="reparacion"]:checked').value : "";
 
     // ─── CORRECCIÓN CRÍTICA: COMPRIMIR Y EMPAQUETAR FOTOS ───
     mostrarStatus("Comprimiendo fotos... 📸", "cargando");
@@ -857,7 +844,6 @@ async function enviarFormulario() {
         motivos: Array.from(document.querySelectorAll(".motivo:checked")).map(e => e.value).join(", "), 
         otroMotivo: document.getElementById("otroMotivo").value.trim(), 
         reparacion: valReparacion, 
-        tapizado: valTapizado, 
         lat: ubicacion.lat, 
         lng: ubicacion.lng, 
         archivos: archivosProcesados // <-- AHORA SÍ VIAJAN LAS FOTOS AL BACKEND
@@ -877,9 +863,14 @@ async function enviarFormulario() {
 
     if (!navigator.onLine) { guardarLocal(); return; }
     
+    // Timeout mayor cuando hay fotos (GAS puede tardar 20-30s procesando imágenes)
+    const timeoutEnvio = archivosProcesados.length > 0 ? 50000 : 20000;
     mostrarStatus("Enviando datos a la nube... ☁️", "cargando");
-    llamarAPI({ accion: "procesarYGuardarTodo", payload: data })
+
+    llamarAPI({ accion: "procesarYGuardarTodo", payload: data }, timeoutEnvio)
         .then((respuesta) => {
+            // Éxito: limpiar el flag anti-duplicado
+            localStorage.removeItem('_ultimo_envio_hash');
             const numR = (respuesta.match(/R-\d+/) || [''])[0];
             const msgFinal = numR
                 ? `✅ Visita registrada correctamente (Registro ${numR})`
@@ -887,12 +878,26 @@ async function enviarFormulario() {
             mostrarStatus(msgFinal, "exito");
             reiniciarFormulario();
         })
-        .catch((error) => { 
-            if (error.message.includes("Failed to fetch") || error.message.includes("Network")) { guardarLocal(); } 
-            else { mostrarStatus("Error crítico.", "error"); } 
+        .catch((error) => {
+            if (error.name === 'AbortError' || error.message.includes('tardó')) {
+                // ⚠️ TIMEOUT: el servidor puede que SÍ haya guardado el registro
+                // Mostrar advertencia para evitar que el usuario reenvíe y duplique
+                mostrarStatus(
+                    "⚠️ La conexión tardó demasiado. " +
+                    "El registro PUEDE estar guardado. " +
+                    "Verificá el historial antes de reintentar.",
+                    "error"
+                );
+                // Guardar localmente también por si no se guardó
+                guardarOfflineBD(data).catch(() => {});
+            } else if (error.message.includes("Failed to fetch") || error.message.includes("Network")) {
+                guardarLocal();
+            } else {
+                mostrarStatus("❌ " + (error.message || "Error al guardar."), "error");
+            }
         })
         .finally(() => {
-            enviandoFormulario = false; 
+            enviandoFormulario = false;
             btnEnviar.disabled = false;
         });
 }
@@ -914,7 +919,9 @@ async function sincronizarOffline() {
             // Envía de a UNO por vez. Si falla, corta y deja el resto para después.
             for (let i = 0; i < pendientes.length; i++) {
                 let item = pendientes[i];
-                await llamarAPI({ accion: "procesarYGuardarTodo", payload: item.data });
+                // Timeout mayor si el registro offline tiene fotos adjuntas
+                const tOut = (item.data.archivos && item.data.archivos.length > 0) ? 60000 : 20000;
+                await llamarAPI({ accion: "procesarYGuardarTodo", payload: item.data }, tOut);
                 await eliminarPendienteBD(item.id); // Solo lo borra si Google dice "Ok"
             }
             
@@ -947,7 +954,6 @@ function reiniciarFormulario() {
     document.getElementById("buscador").classList.remove("error-input"); 
     document.getElementById("otroGimnasio").classList.remove("error-input"); 
     document.getElementById("card-motivo").style.border = "none"; 
-    document.getElementById("box-tapizado").style.display = "none"; 
     
     // Limpieza de etiquetas personalizadas de motivos
     if (typeof otrosMotivosArray !== 'undefined') {

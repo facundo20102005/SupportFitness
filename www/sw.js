@@ -8,7 +8,7 @@
 
 // IMPORTANTE: Cambiar este string cada vez que se suban cambios a producción.
 // Formato: 'sf-YYYYMMDD-HHMM' — evita que los usuarios vean versión vieja cacheada.
-const CACHE_VER  = 'sf-20250518-1200';
+const CACHE_VER  = 'sf-20250523-1200';
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
 // Assets que se intentan precargar al instalar el SW.
@@ -27,8 +27,6 @@ const PRECACHE = [
     '/Informes/inf-abonos.js',
     '/Jefatura/index.html',
     '/Jefatura/jefatura.js',
-    '/Tapizados/index.html',
-    '/Tapizados/tapizados.js',
     '/assets/Logoparapdf.png',
     '/assets/StarTrac.png',
     '/assets/Spinning.png',

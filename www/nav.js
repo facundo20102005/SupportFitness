@@ -28,14 +28,6 @@ const NavBar = (() => {
             urlAbsoluta: () => _resolverRuta('/Institucional/index.html'),
         },
         {
-            id:        'tapizados',
-            label:     'Tapizados',
-            icono:     '💺',
-            bnavIcono: '💺',
-            bnavLabel: 'Tapizados',
-            urlAbsoluta: () => _resolverRuta('/Tapizados/index.html'),
-        },
-        {
             id:        'informes',
             label:     'Informes',
             icono:     '📄',
@@ -58,7 +50,7 @@ const NavBar = (() => {
     function _detectarRaiz() {
         if (_raizCache) return _raizCache;
         const ruta = window.location.pathname;
-        const carpetasConocidas = ['/Jefatura/', '/Tapizados/', '/Informes/', '/Institucional/'];
+        const carpetasConocidas = ['/Jefatura/', '/Informes/', '/Institucional/'];
         for (const c of carpetasConocidas) {
             const idx = ruta.indexOf(c);
             if (idx !== -1) {
@@ -82,7 +74,6 @@ const NavBar = (() => {
     function _detectarPaginaActual() {
         const ruta = window.location.pathname.toLowerCase();
         if (ruta.includes('/jefatura/'))      return 'jefatura';
-        if (ruta.includes('/tapizados/'))     return 'tapizados';
         if (ruta.includes('/informes/'))      return 'informes';
         if (ruta.includes('/institucional/')) return 'institucional';
         return 'formulario';
