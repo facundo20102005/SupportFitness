@@ -1057,6 +1057,62 @@ body.dark-mode .cell-visit { background: #166534 !important; color: #86efac !imp
 
     /* ⚡ LAS CARDS SIGUEN TENIENDO LA SEPARACIÓN QUE QUERÍAS ⚡ */
     .card { padding: 16px; margin-bottom: 25px; }
+
+    /* ── HISTORIAL ANUAL: pantalla completa en celular ── */
+    #modalRegistro .modal-content {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        border-radius: 0 !important;
+        padding: 10px 6px 0 !important;
+        overflow: hidden;
+    }
+    #modalRegistro .modal-header {
+        gap: 6px;
+        padding: 0 6px 10px;
+        flex-wrap: nowrap;
+    }
+    #modal-titulo {
+        font-size: 14px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .cal-nav-btn {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 14px !important;
+        flex-shrink: 0;
+    }
+    /* Tabla excel: texto más chico, columna nombre más corta */
+    .excel-table {
+        font-size: 10px !important;
+    }
+    .gym-name-cell {
+        max-width: 110px !important;
+        font-size: 9px !important;
+    }
+    .excel-header-row th {
+        font-size: 10px !important;
+    }
+    .excel-subheader-row th {
+        font-size: 9px !important;
+        padding: 5px 3px !important;
+    }
+    .excel-table th, .excel-table td {
+        padding: 6px 3px !important;
+    }
+    /* Botón de zona colapsable más compacto */
+    .zona-header-btn {
+        padding: 10px 12px !important;
+        font-size: 13px !important;
+    }
+    /* Banner de conexión compacto */
+    #contenido-registro > div:first-child {
+        font-size: 11px !important;
+        padding: 6px 10px !important;
+    }
 }
 
 @media (min-width: 769px) {

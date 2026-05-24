@@ -22,6 +22,7 @@
     <script src="inf-ui.js?v=7"></script>         <!-- setModoApp, burbuja, cargarApp  -->
     <script src="inf-docs.js?v=7"></script>       <!-- docs, items, PDF, modales       -->
     <script src="inf-abonos.js?v=7" defer></script> <!-- abonos mensuales            -->
+    <script src="inf-reparaciones.js?v=7" defer></script> <!-- asesor de reparaciones    -->
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -145,6 +146,9 @@
         #tab-creados { background: var(--inf-card); color: var(--inf-sub); border: 1.5px solid var(--inf-border); }
         #tab-crear.activo   { box-shadow: 0 5px 18px rgba(26,115,232,0.5); }
         #tab-creados.activo { background: #1d2939; color: white; border-color: transparent; box-shadow: 0 3px 12px rgba(0,0,0,0.3); }
+        /* FIX: Presupuestar tab con el mismo estilo que los otros */
+        #tab-reparaciones { background: var(--inf-card); color: var(--inf-sub); border: 1.5px solid var(--inf-border); }
+        #tab-reparaciones.activo { background: #1d2939; color: white; border-color: transparent; box-shadow: 0 3px 12px rgba(0,0,0,0.3); }
         .sub-tab:active { transform: scale(0.97); }
         @media (max-width: 380px) { .sub-tab { font-size: 12px; padding: 11px 6px; } }
 
@@ -826,7 +830,7 @@
             <button class="modo-tab" id="btn-modo-ofertas"     onclick="setModoApp('ofertas')">
                 <span class="tab-icon">🛠️</span>Ofertas
             </button>
-            <button class="modo-tab" id="btn-modo-presupuestos" onclick="setModoApp('presupuestos')">
+            <button class="modo-tab" id="btn-modo-presupuestos" title="Ver reparaciones y sugerencias de precios" onclick="setModoApp('presupuestos')">
                 <span class="tab-icon">💰</span>Presupuestos
             </button>
             <button class="modo-tab" id="btn-modo-abonos"      onclick="setModoApp('abonos')">
@@ -860,7 +864,7 @@
         <!-- ══════ ÁREA DE TRABAJO ══════ -->
         <div id="area-trabajo" style="display:none;">
 
-            <!-- Sub-tabs -->
+            <!-- Sub-tabs (el botón Presupuestar se inyecta dinámicamente en modo presupuestos) -->
             <div class="sub-tabs">
                 <button id="tab-crear"   class="sub-tab" onclick="switchTab('crear')">✏️ Crear Nuevo</button>
                 <button id="tab-creados" class="sub-tab" onclick="switchTab('creados')">📁 Ver Guardados</button>
@@ -1022,6 +1026,11 @@
                     <div id="contenedor-informes-creados"></div>
                 </div>
             </div>
+
+            <!-- ══ PRESUPUESTAR / REPARACIONES ══ -->
+            <!-- FIX: contenedor estático para evitar problemas de inserción dinámica fuera del layout -->
+            <div id="_rep-root" style="display:none; padding:0 0 80px 0;"></div>
+
         </div>
 
         <div id="status-informe"></div>

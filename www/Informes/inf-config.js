@@ -18,10 +18,10 @@ const PRECIOS_PRESUPUESTOS = {
     "Visita técnica para instalación + Mano de Obra": { precio: 160000, moneda: "ARS" }, 
     "Bateria Interna 6v 4Ah": { precio: 84600, moneda: "ARS" },
     "Banda Cinta Importadas (Star Trac, Technogym, Uranium, Impulse, Precor)": { precio: 625, moneda: "USD" },
-    "Cable Acero Imp. Grueso c/ terminales": { precio: 22, moneda: "USD" },
-    "Cable Acero Nac. Grueso c/ terminales": { precio: 18, moneda: "USD" },
-    "Cable Acero Imp. Fino c/ terminales": { precio: 20, moneda: "USD" },
-    "Cable Acero Nac. Fino c/ terminales": { precio: 15, moneda: "USD" },
+    "Cable Acero Importado Grueso con terminales": { precio: 22, moneda: "USD" },
+    "Cable Acero Nacional Grueso con terminales": { precio: 18, moneda: "USD" },
+    "Cable Acero Importado Fino con terminales": { precio: 20, moneda: "USD" },
+    "Cable Acero Nacional Fino con terminales": { precio: 15, moneda: "USD" },
     "Litro de Lubricante": { precio: 92000, moneda: "ARS" },
     "Banda de Cinta Nacional (Kip Machine, Olmo, Semikon)": { precio: 500, moneda: "USD" },
     "Tabla de Cinta": { precio: 500, moneda: "USD" },
@@ -30,8 +30,8 @@ const PRECIOS_PRESUPUESTOS = {
     "Correas de Motor": { precio: 149000, moneda: "ARS" },
     "Reparación Placas MCB": { precio: 600000, moneda: "ARS" },
     "Correa Motor Life Fitness": { precio: 178000, moneda: "ARS" },
-    "Reparación Generador (Bici/Elíptico)": { precio: 380000, moneda: "ARS" },
-    "Correas Bici": { precio: 179000, moneda: "ARS" },
+    "Reparación Generador (Bicicleta/Elíptico)": { precio: 380000, moneda: "ARS" },
+    "Correas Bicicleta": { precio: 179000, moneda: "ARS" },
     "Cadenas Spinner 112L pro (Bicicleta)": { precio: 44, moneda: "USD" },
     "Registro de doble acción": { precio: 42000,  moneda: "ARS" },
     "Mosquetones":     { precio: 15000,   moneda: "ARS" },
@@ -97,6 +97,18 @@ const PRECIOS_POR_CATEGORIA = {
         "Registro de doble acción": { precio: 42000,  moneda: "ARS" },
         "Cadenas Spinner 112L pro (Bicicleta)": { precio: 44, moneda: "USD" },
         // AGREGAR NUEVOS CONSUMIBLES AQUÍ ↓
+    },
+
+    // ── 🪡 TAPIZADOS ─────────────────────────────────────────────────
+    // Precios del catálogo de tapizados (actualizar cuando cambien)
+    // Los tamaños se detectan automáticamente por la descripción de la visita.
+    "🪡 Tapizados": {
+        "Tapizado Chico (asiento/apoyo pequeño)":    { precio: 52500,  moneda: "ARS" },
+        "Tapizado Mediano (asiento/respaldo mediano)":{ precio: 75000,  moneda: "ARS" },
+        "Tapizado Grande (respaldo grande)":          { precio: 97500,  moneda: "ARS" },
+        "Rodillos de apoya piernas/brazos":           { precio: 52500,  moneda: "ARS" },
+        // AGREGAR NUEVOS TAPIZADOS AQUÍ ↓
+        // Ejemplo: "Tapizado Mariposa Pectorales": { precio: 75000, moneda: "ARS" },
     },
 };
 

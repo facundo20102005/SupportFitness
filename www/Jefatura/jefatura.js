@@ -61,10 +61,16 @@ function gymCoincide(gymHistorial, gymCronograma) {
     const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
     if (shorter.length >= 10 && longer.includes(shorter)) return true;
  
+    // FIX BARRANCAS: comparar sin artículos (de/del/la/el/los/las)
+    // Resuelve casos como "BARRANCAS DEL LAGO" vs "BARRANCAS DE LAGO"
+    const _stripArt = s => s
+        .replace(/\b(de|del|la|las|los|el|un|una|al|y|e|o)\b/g, '')
+        .replace(/\s+/g, ' ').trim();
+    const aSinArt = _stripArt(a);
+    const bSinArt = _stripArt(b);
+    if (aSinArt.length >= 8 && aSinArt === bSinArt) return true;
+
     return false;
-    // FIX: ELIMINADO el bloque de palabras sueltas (era el causante del bug)
-    // Antes: "tower".length>4 && "consorcio torre gelly".includes("torre") → TRUE (incorrecto)
-    // Ahora: no se hace esa comparación → FALSE (correcto)
 }
 
 // FIX: motivo preventivo — ya NO incluye motivos vacíos como preventivos
@@ -98,22 +104,30 @@ async function llamarAPI(obj, timeoutMs = 20000) {
 
 // ── Auth con expiración (FIX: no queda sesión abierta para siempre) ──
 const AUTH_KEY    = 'sf_jefatura_auth';
-const AUTH_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
+const AUTH_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
 
 function _tieneAcceso() {
     try {
-        const raw = sessionStorage.getItem(AUTH_KEY);
-        if (!raw) return false;
+        // FIX: localStorage persiste 30 días aunque se cierre el navegador
+        const raw = localStorage.getItem(AUTH_KEY);
+        if (!raw) {
+            // Compatibilidad hacia atrás: sesión vieja en sessionStorage
+            const rawSS = sessionStorage.getItem(AUTH_KEY);
+            if (!rawSS) return false;
+            const { expiry: expSS } = JSON.parse(rawSS);
+            if (Date.now() > expSS) { sessionStorage.removeItem(AUTH_KEY); return false; }
+            return true;
+        }
         const { expiry } = JSON.parse(raw);
-        if (Date.now() > expiry) { sessionStorage.removeItem(AUTH_KEY); return false; }
+        if (Date.now() > expiry) { localStorage.removeItem(AUTH_KEY); return false; }
         return true;
     } catch(e) { return false; }
 }
 
 function _guardarAcceso() {
-    sessionStorage.setItem(AUTH_KEY, JSON.stringify({ expiry: Date.now() + AUTH_TTL_MS }));
-    // Mantener compatibilidad con código legacy que lee localStorage
-    localStorage.setItem("auth_jefatura", "true");
+    // localStorage: persiste 30 días, sobrevive al cierre de pestañas/navegador
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ expiry: Date.now() + AUTH_TTL_MS }));
+    localStorage.setItem("auth_jefatura", "true"); // compatibilidad
 }
 
 // ── Verificación de acceso ────────────────────────────────
@@ -624,14 +638,20 @@ function renderizarGrillaAnual() {
 
     zonas.forEach(zonaObj => {
         html += `<button class="zona-header-btn" onclick="this.nextElementSibling.classList.toggle('activa')">📍 ${zonaObj.zona.toUpperCase()}</button>`;
-        html += `<div class="zona-tabla-wrapper activa"><div class="zona-container"><table class="excel-table"><thead>
-            <tr class="excel-header-row"><th colspan="14">MANTENIMIENTO PREVENTIVO PERIODO ${añoVistaActual} ${zonaObj.zona.toUpperCase()}</th></tr>
-            <tr class="excel-subheader-row"><th class="gym-number-cell">Nº</th><th class="gym-name-cell">Clientes Abonados</th>`;
+        html += `<div class="zona-tabla-wrapper activa">
+            <div class="zona-container" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">
+            <table class="excel-table" style="min-width:650px;"><thead>
+            <tr class="excel-header-row"><th colspan="14">PREVENTIVO ${añoVistaActual} ${zonaObj.zona.toUpperCase()}</th></tr>
+            <tr class="excel-subheader-row">
+                <th class="gym-number-cell" style="position:sticky;left:0;z-index:3;background:#1a73e8;">Nº</th>
+                <th class="gym-name-cell" style="position:sticky;left:34px;z-index:3;background:#1a73e8;min-width:140px;max-width:160px;font-size:11px;">CLIENTE</th>`;
         mA.forEach(m => html += `<th>${m}-${suf}</th>`);
         html += `</tr></thead><tbody>`;
 
         zonaObj.clientes.forEach((cliente, idx) => {
-            html += `<tr><td class="gym-number-cell">${idx+1}</td><td class="gym-name-cell">${cliente.nombre.toUpperCase()}</td>`;
+            html += `<tr>
+                <td class="gym-number-cell" style="position:sticky;left:0;z-index:2;background:var(--cell-bg,white);">${idx+1}</td>
+                <td class="gym-name-cell" style="position:sticky;left:34px;z-index:2;background:var(--cell-bg,white);font-size:11px;max-width:160px;white-space:normal;line-height:1.2;">${cliente.nombre.toUpperCase()}</td>`;
             for (let m=0; m<12; m++) {
                 // FIX: usar gymCoincide (flexible) en lugar de normalizar() === estricto
                 // FIX: usar esMotivoPresentivo() en lugar de incluir motivos vacíos
@@ -740,120 +760,121 @@ async function sincronizarHistorialEnZonasDesdeApp() {
 }
 
 // ── Exportar clientes ─────────────────────────────────────
-// ==================================================================
-// REEMPLAZO COMPLETO DE: exportarClientesExcel y _filtrarClientesModal
-// en jefatura.js
-// ==================================================================
-
-// Helper: copiar CUIT al portapapeles (solo dígitos, sin guiones)
+// ── Helpers globales: copiar al portapapeles desde la tabla de clientes ────
 function _copiarCuit(btnEl) {
-    var cuitRaw = btnEl.getAttribute('data-cuit') || '';
-    // Quitar guiones, espacios, barras, + → dejar solo números
-    var limpio = cuitRaw.replace(/[\-\s\/\+]/g, '').trim();
+    var limpio = String(btnEl.getAttribute('data-cuit') || '').replace(/[-\s\/+]/g, '').trim();
     navigator.clipboard.writeText(limpio).then(function() {
         var orig = btnEl.textContent;
         btnEl.textContent = '✅';
         setTimeout(function() { btnEl.textContent = orig; }, 1500);
-    }).catch(function() {});
+    }).catch(function(){});
 }
-
-// Helper: copiar primer correo limpio (sin paréntesis, sin /)
 function _copiarCorreo(btnEl) {
-    var correoRaw = btnEl.getAttribute('data-correo') || '';
-    // Tomar solo el primer correo antes de / o \
-    var primero = correoRaw.split(/\s*[\/\\]\s*/)[0] || correoRaw;
-    // Quitar texto entre paréntesis
-    primero = primero.replace(/\s*\([^)]*\)\s*/g, '');
-    // Quitar + y espacios al inicio
-    primero = primero.replace(/^[\s\+]+/, '').trim();
-    navigator.clipboard.writeText(primero).then(function() {
+    var correo = String(btnEl.getAttribute('data-correo') || '').trim();
+    navigator.clipboard.writeText(correo).then(function() {
         var orig = btnEl.textContent;
         btnEl.textContent = '✅';
         setTimeout(function() { btnEl.textContent = orig; }, 1500);
-    }).catch(function() {});
+    }).catch(function(){});
 }
+
 
 function exportarClientesExcel() {
     if (!window.listaAbonosGlobal || window.listaAbonosGlobal.length === 0) {
         mostrarAlerta("No hay datos de clientes cargados todavía.");
         return;
     }
-
+ 
     const existing = document.getElementById("_modal-clientes");
     if (existing) existing.remove();
-
-    const abonos  = window.listaAbonosGlobal;
-    const total   = abonos.reduce((acc, a) => acc + (Number(a.precio) || 0), 0);
-    const fmtARS  = n => "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-
-    // ── Mes y año del calendario actual ──
-    const mesActual   = fechaVistaJefatura.getMonth();
-    const añoActual   = fechaVistaJefatura.getFullYear();
-    const mesesN      = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-    const mesLabel    = mesesN[mesActual] + " " + añoActual;
-
+ 
+    const abonos = window.listaAbonosGlobal;
+    const total  = abonos.reduce((acc, a) => acc + (Number(a.precio) || 0), 0);
+    const fmtARS = n => "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+ 
+    // ── Mes y año actual (el que se está viendo en el calendario) ──
+    const mesActual = fechaVistaJefatura.getMonth(); // 0-indexed
+    const añoActual = fechaVistaJefatura.getFullYear();
+    const mesesNombres = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    const mesLabel = mesesNombres[mesActual] + " " + añoActual;
+ 
+    // ── Normalización para comparar gyms con historialGlobal ──────
+    // historialGlobal.gym viene normalizado del backend (lowercase, sin tildes, sin símbolos)
     function normBackend(s) {
         return (s || '').toLowerCase().normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")
-            .replace(/[<>:"\/\\|?*]+/g, "")
+            .replace(/[<>:"/\\|?*]+/g, "")
             .replace(/\s+/g, " ").trim();
     }
-    function tieneVisitaMes(gym) {
-        if (!historialGlobal || !historialGlobal.length) return null;
-        const n = normBackend(gym);
-        return historialGlobal.some(v => v.gym === n && Number(v.mes) === mesActual && Number(v.año) === añoActual);
+ 
+    // ── Determinar si el gym tuvo visita este mes ─────────────────
+    // Usa historialGlobal (ya cargado en memoria al abrir Jefatura)
+    function tieneVisitaMes(abonoGym) {
+        if (!historialGlobal || historialGlobal.length === 0) return null;
+        // FIX: usa gymCoincide (flexible) en lugar de exact match
+        // Esto resuelve "BARRANCAS DEL LAGO" vs "BARRANCAS DE LAGO" y similares
+        return historialGlobal.some(v =>
+            gymCoincide(v.gym, abonoGym) &&
+            Number(v.mes) === mesActual &&
+            Number(v.año) === añoActual
+        );
     }
-
-    // ── Construir filas ──────────────────────────────────────────
+ 
+    // ── Construir filas ───────────────────────────────────────────
     const filas = abonos.map(function(a, i) {
-
-        // Badge mes visitado
         var visitoMes = tieneVisitaMes(a.gym);
-        var badgeMes  = '';
+
+        // Badge mes
         var bgV = 'background:#0d4f2e;color:#4ade80;border:1px solid #16a34a;';
         var bgP = 'background:#4a0e0e;color:#f87171;border:1px solid #dc2626;';
         var bgN = 'background:#1e1e1e;color:#64748b;border:1px solid #334155;';
         var sp  = 'padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;';
-        if (visitoMes === true && a.pideRemito)   badgeMes = '<span style="' + bgV + sp + '" title="Visitado+Remito">✅ OK + 🧾</span>';
-        else if (visitoMes === true)               badgeMes = '<span style="' + bgV + sp + '" title="Visitado">✅</span>';
-        else if (visitoMes === false && a.pideRemito) badgeMes = '<span style="' + bgP + sp + '" title="Sin visita">❌ 🧾</span>';
-        else if (visitoMes === false)              badgeMes = '<span style="' + bgN + sp + '">—</span>';
-        else                                       badgeMes = '<span style="color:#475467;font-size:11px;">?</span>';
+        var badgeMes;
+        if      (visitoMes === true  && a.pideRemito)  badgeMes = '<span style="' + bgV + sp + '" title="Visitado + Remito">✅ OK + 🧾</span>';
+        else if (visitoMes === true)                    badgeMes = '<span style="' + bgV + sp + '" title="Visitado este mes">✅</span>';
+        else if (visitoMes === false && a.pideRemito)   badgeMes = '<span style="' + bgP + sp + '" title="Sin visita, pide remito">❌ 🧾</span>';
+        else if (visitoMes === false)                   badgeMes = '<span style="' + bgN + sp + '">—</span>';
+        else                                            badgeMes = '<span style="color:#475467;font-size:11px;">?</span>';
 
-        // CUIT con botón copiar
-        // Usamos data-attribute para no interpolar JS dentro de onclick strings
-        var cuitRaw = String(a.cuit || '').trim();
-        // Escapar comillas dobles para el atributo HTML
-        var cuitAttr = cuitRaw.replace(/"/g, '&quot;');
-        var cuitCelda;
-        if (cuitRaw && cuitRaw !== '—') {
-            cuitCelda = '<div style="display:flex;align-items:center;gap:5px;">'
-                + '<span style="color:#94a3b8;font-size:12px;">' + cuitRaw + '</span>'
-                + '<button data-cuit="' + cuitAttr + '" onclick="_copiarCuit(this)"'
-                + ' style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;color:#60a5fa;" title="Copiar CUIT sin guiones">📋</button>'
-                + '</div>';
-        } else {
-            cuitCelda = '<span style="color:#475467;">—</span>';
-        }
+        // ── CUIT con botón copiar (solo dígitos, sin guiones) ──────
+        var cuitRaw  = String(a.cuit || '').trim();
+        var cuitAttr = cuitRaw.replace(/"/g, '');
+        var cuitCelda = (cuitRaw && cuitRaw !== '—')
+            ? ('<div style="display:flex;align-items:center;gap:4px;">'
+               + '<span style="color:#94a3b8;font-size:12px;">' + cuitRaw + '</span>'
+               + '<button data-cuit="' + cuitAttr + '" onclick="_copiarCuit(this)"'
+               + ' style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px;color:#60a5fa;" title="Copiar sin guiones">📋</button>'
+               + '</div>')
+            : '<span style="color:#475467;">—</span>';
 
-        // Correo con botón copiar limpio
-        var correoRaw  = String(a.correo || '').trim();
-        var correoAttr = correoRaw.replace(/"/g, '&quot;');
-        var emailId    = '_email-' + i;
+        // ── Correos: uno por dirección, cada uno con su botón copiar ──
+        var correoRaw = String(a.correo || '').trim();
+        var emailId   = '_email-' + i;
         var emailCelda;
         if (correoRaw) {
+            var emailsArr = correoRaw.split(/[\/,]/).map(function(e) {
+                return e.replace(/\([^)]*\)/g, '').replace(/^\s+|\s+$/g, '').replace(/^[+\s]+/, '').trim();
+            }).filter(function(e) { return e.indexOf('@') > 0; });
+
+            if (!emailsArr.length) emailsArr = [correoRaw.trim()];
+
+            var emailsHtml = emailsArr.map(function(em) {
+                var emAttr = em.replace(/"/g, '&quot;');
+                return '<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">'
+                    + '<span style="font-size:11px;color:#94a3b8;word-break:break-all;">' + em + '</span>'
+                    + '<button data-correo="' + emAttr + '" onclick="_copiarCorreo(this)"'
+                    + ' style="background:none;border:none;cursor:pointer;font-size:13px;padding:1px;color:#60a5fa;flex-shrink:0;" title="Copiar correo">📋</button>'
+                    + '</div>';
+            }).join('');
+
+            var labelBtn = emailsArr.length > 1 ? '📧 Ver (' + emailsArr.length + ')' : '📧 Ver';
             emailCelda = '<button onclick="var el=document.getElementById(\'' + emailId + '\');'
                 + 'var s=el.style.display!==\'none\';el.style.display=s?\'none\':\'block\';'
-                + 'this.textContent=s?\'📧 Ver\':\'📧 Ocultar\';"'
+                + 'this.textContent=s?\'Ocultar\':\'' + labelBtn + '\';"'
                 + ' style="background:#1e3a5f;color:#60a5fa;border:1px solid rgba(96,165,250,0.3);'
-                + 'padding:4px 9px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">📧 Ver</button>'
-                + '<div id="' + emailId + '" style="display:none;margin-top:4px;font-size:11px;'
-                + 'color:#94a3b8;word-break:break-all;max-width:240px;line-height:1.4;">'
-                + correoRaw
-                + ' <button data-correo="' + correoAttr + '" onclick="_copiarCorreo(this)"'
-                + '  style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px;vertical-align:middle;"'
-                + '  title="Copiar primer correo (limpio)">📋</button>'
-                + '</div>';
+                + 'padding:4px 9px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'
+                + labelBtn + '</button>'
+                + '<div id="' + emailId + '" style="display:none;margin-top:4px;">' + emailsHtml + '</div>';
         } else {
             emailCelda = '<span style="color:#475467;font-size:11px;">Sin correo</span>';
         }
@@ -869,23 +890,25 @@ function exportarClientesExcel() {
             + '<td style="padding:8px 10px;text-align:center;">' + badgeMes + '</td>'
             + '</tr>';
     }).join('');
-
-    // ── Modal ────────────────────────────────────────────────────
+ 
+    // ── Modal ─────────────────────────────────────────────────────
     const modal = document.createElement("div");
     modal.id = "_modal-clientes";
-    modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);"
-        + "display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;backdrop-filter:blur(4px);";
-
+    modal.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;backdrop-filter:blur(4px);";
+ 
     modal.innerHTML = `
         <div style="background:#1e293b;border-radius:18px;width:100%;max-width:960px;
                     border:1px solid rgba(255,255,255,0.08);overflow:hidden;
                     box-shadow:0 25px 60px rgba(0,0,0,0.5);margin:auto;">
+ 
+            <!-- Header -->
             <div style="display:flex;align-items:center;justify-content:space-between;
                         padding:18px 22px;background:linear-gradient(135deg,#0f9d58,#0b7a42);">
                 <div>
                     <div style="font-size:18px;font-weight:900;color:white;">📊 Clientes Activos</div>
                     <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px;">
-                        ${abonos.length} clientes · Total mensual: ${fmtARS(total)} · Mes: <b>${mesLabel}</b>
+                        ${abonos.length} clientes · Total mensual: ${fmtARS(total)}
+                        &nbsp;·&nbsp;Mes vista: <b>${mesLabel}</b>
                     </div>
                 </div>
                 <button onclick="document.getElementById('_modal-clientes').remove()"
@@ -893,13 +916,18 @@ function exportarClientesExcel() {
                                width:36px;height:36px;border-radius:50%;font-size:18px;
                                cursor:pointer;font-weight:900;">✕</button>
             </div>
-            <div style="padding:8px 20px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05);
+ 
+            <!-- Leyenda de colores -->
+            <div style="padding:8px 20px;background:rgba(255,255,255,0.02);
+                        border-bottom:1px solid rgba(255,255,255,0.05);
                         display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:#64748b;">
                 <span>✅ = Visitado este mes</span>
-                <span>✅ + 🧾 = Visitado + remito</span>
-                <span>❌ 🧾 = Sin visita (pide remito)</span>
-                <span>📋 = Copiar al portapapeles</span>
+                <span>✅ + 🧾 = Visitado + requiere remito</span>
+                <span>❌ 🧾 = Sin visita (requiere remito)</span>
+                <span>— = Sin visita registrada</span>
             </div>
+ 
+            <!-- Buscador -->
             <div style="padding:10px 20px;border-bottom:1px solid rgba(255,255,255,0.05);">
                 <input type="text" placeholder="🔍 Buscar cliente..."
                        oninput="_filtrarClientesModal(this.value)"
@@ -909,26 +937,30 @@ function exportarClientesExcel() {
                               font-size:13px;outline:none;box-sizing:border-box;"
                        autocomplete="off">
             </div>
+ 
+            <!-- Tabla -->
             <div style="overflow-x:auto;max-height:65vh;overflow-y:auto;">
                 <table id="_tabla-clientes" style="width:100%;border-collapse:collapse;font-family:inherit;">
                     <thead style="position:sticky;top:0;z-index:2;">
                         <tr style="background:#1a2535;">
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">#</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;white-space:nowrap;">#</th>
                             <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CLIENTE</th>
                             <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">FACT.</th>
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CUIT 📋</th>
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CORREO 📋</th>
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:right;">PRECIO/MES</th>
-                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:center;">${mesLabel}</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CUIT</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:left;">CORREO</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:right;white-space:nowrap;">PRECIO/MES</th>
+                            <th style="padding:10px;font-size:11px;color:#64748b;text-align:center;white-space:nowrap;">${mesLabel}</th>
                         </tr>
                     </thead>
                     <tbody style="color:#f1f5f9;">${filas}</tbody>
                 </table>
             </div>
+ 
+            <!-- Footer -->
             <div style="padding:14px 22px;background:rgba(0,0,0,0.2);
                         display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                 <span style="font-size:13px;color:#64748b;">
-                    Total mensual: <strong style="color:#34d399;">${fmtARS(total)}</strong>
+                    Total mensual estimado: <strong style="color:#34d399;">${fmtARS(total)}</strong>
                 </span>
                 <button onclick="document.getElementById('_modal-clientes').remove()"
                         style="background:#334155;border:none;color:white;padding:8px 18px;
@@ -938,15 +970,17 @@ function exportarClientesExcel() {
             </div>
         </div>
     `;
-
+ 
     modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
 }
-
+ 
+// Filtrado en tiempo real del buscador del modal
 function _filtrarClientesModal(texto) {
     const q = texto.toLowerCase().trim();
     document.querySelectorAll('#_tabla-clientes tbody tr').forEach(tr => {
-        tr.style.display = (!q || (tr.dataset.gym||'').includes(q)) ? '' : 'none';
+        const gym = tr.dataset.gym || '';
+        tr.style.display = (!q || gym.includes(q)) ? '' : 'none';
     });
 }
 

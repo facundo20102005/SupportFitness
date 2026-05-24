@@ -360,7 +360,10 @@ function renderizarTarjetas() {
  
     // 4. Aplicar filtros (pago + mes + TIPO)
     let finales = filtrados.filter(d => {
-        const matchPago = (filtroPagoActual === 'Todos' || d.pagado === filtroPagoActual);
+        const pagadoNorm = String(d.pagado || '').trim();
+        const matchPago = (filtroPagoActual === 'Todos'
+            || pagadoNorm === filtroPagoActual
+            || pagadoNorm.toLowerCase() === filtroPagoActual.toLowerCase());
         const matchMes  = (filtroMesActual  === 'Todos' || d.mesAnio === filtroMesActual);
         const matchTipo = (filtroTipoActual === 'todos' || d._tipo === filtroTipoActual);
         return matchPago && matchMes && matchTipo;
@@ -496,24 +499,42 @@ function renderizarTarjetas() {
                 }).join('') + `</ul>`;
         }
  
+        // ── Estados con selects mejorados y botones de pago visuales ──
+        const esPendientePago = String(doc.pagado || '').trim() !== 'Pagado';
+        const esPagadoPago    = !esPendientePago;
         const selectsHTML = modoApp === 'presupuestos' ? `
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
                 <div>
-                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#5f6368; margin-bottom:4px;">Estado Operativo</div>
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#94a3b8; margin-bottom:4px;">Estado Operativo</div>
                     <select onchange="cambiarEstado(${doc.id}, this.value, 'estado')"
-                            style="width:100%; padding:9px; border-radius:8px; border:1.5px solid ${colorEst}; font-weight:700; color:${colorEst}; outline:none; background:white;">
-                        <option value="Pendiente"            ${estadoReal==='Pendiente'?'selected':''}>Pendiente</option>
-                        <option value="Enviado"              ${estadoReal==='Enviado'?'selected':''}>Enviado</option>
-                        <option value="Facturado / Aprobado" ${estadoReal==='Facturado / Aprobado'?'selected':''}>Facturado / Aprobado</option>
+                            style="width:100%; padding:10px; border-radius:10px; border:2px solid ${colorEst};
+                                   font-weight:800; color:${colorEst}; outline:none;
+                                   background:#1e293b; cursor:pointer; font-size:13px;">
+                        <option value="Pendiente"            ${estadoReal==='Pendiente'?'selected':''}>⏳ Pendiente</option>
+                        <option value="Enviado"              ${estadoReal==='Enviado'?'selected':''}>📤 Enviado</option>
+                        <option value="Facturado / Aprobado" ${estadoReal==='Facturado / Aprobado'?'selected':''}>✅ Facturado / Aprobado</option>
                     </select>
                 </div>
                 <div>
-                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#5f6368; margin-bottom:4px;">Estado de Pago</div>
-                    <select onchange="cambiarEstado(${doc.id}, this.value, 'pagado')"
-                            style="width:100%; padding:9px; border-radius:8px; border:1.5px solid ${colorPag}; font-weight:700; color:${colorPag}; background:${bgPag}; outline:none;">
-                        <option value="Pendiente" ${doc.pagado==='Pendiente'?'selected':''}>Pendiente</option>
-                        <option value="Pagado"    ${doc.pagado==='Pagado'?'selected':''}>Pagado</option>
-                    </select>
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#94a3b8; margin-bottom:4px;">Estado de Pago</div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="cambiarEstado(${doc.id}, 'Pendiente', 'pagado')"
+                                style="flex:1; padding:10px 6px; border-radius:10px; border:2px solid #f87171;
+                                       background:${esPendientePago?'rgba(239,68,68,0.2)':'rgba(255,255,255,0.04)'};
+                                       color:${esPendientePago?'#f87171':'#64748b'};
+                                       font-weight:${esPendientePago?900:600}; font-size:12px;
+                                       cursor:pointer; transition:all 0.2s;">
+                            🔴 Pendiente
+                        </button>
+                        <button onclick="cambiarEstado(${doc.id}, 'Pagado', 'pagado')"
+                                style="flex:1; padding:10px 6px; border-radius:10px; border:2px solid #4ade80;
+                                       background:${esPagadoPago?'rgba(74,222,128,0.2)':'rgba(255,255,255,0.04)'};
+                                       color:${esPagadoPago?'#4ade80':'#64748b'};
+                                       font-weight:${esPagadoPago?900:600}; font-size:12px;
+                                       cursor:pointer; transition:all 0.2s;">
+                            ✅ Pagado
+                        </button>
+                    </div>
                 </div>
             </div>` : '';
  

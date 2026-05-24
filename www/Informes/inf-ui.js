@@ -409,6 +409,11 @@ function setModoApp(modo) {
     if (msjInicial)  msjInicial.style.display  = modo === 'abonos' ? 'none' : 'none';
 
     if (modo === 'abonos') {
+        // Ocultar vista de reparaciones — NO tiene nada que ver con Abonos
+        const repRootAb = document.getElementById('_rep-root');
+        if (repRootAb) repRootAb.style.display = 'none';
+        const tabRepAb = document.getElementById('tab-reparaciones');
+        if (tabRepAb) tabRepAb.style.display = 'none';
         const hoy = new Date();
         const mm  = String(hoy.getMonth() + 1).padStart(2,'0');
         const yyyy = String(hoy.getFullYear());
@@ -451,6 +456,31 @@ function setModoApp(modo) {
         if (titForm) titForm.innerText = '💰 Nuevo Presupuesto';
     }
 
+    // ── Tab "🔧 Presupuestar" solo en modo presupuestos ─────────────
+    if (modo === 'presupuestos') {
+        // Crear el tab si no existe
+        if (!document.getElementById('tab-reparaciones')) {
+            const tabC = document.getElementById('tab-crear');
+            if (tabC) {
+                const tabRep = document.createElement('button');
+                tabRep.id = 'tab-reparaciones';
+                tabRep.className = 'sub-tab';
+                tabRep.innerHTML = '🔧 Presupuestar';
+                // FIX: sin inline styles para que los CSS de .sub-tab e #tab-reparaciones tomen efecto
+                tabRep.onclick = function() { switchTab('reparaciones'); };
+                tabC.parentNode.appendChild(tabRep);
+            }
+        }
+        const tabRep = document.getElementById('tab-reparaciones');
+        if (tabRep) { tabRep.style.display = ''; } // FIX: dejar que flex del .sub-tabs maneje el tamaño
+    } else {
+        // Ocultar tab y vista de reparaciones en Ofertas
+        const tabRep = document.getElementById('tab-reparaciones');
+        if (tabRep) tabRep.style.display = 'none';
+        const repRoot = document.getElementById('_rep-root');
+        if (repRoot) repRoot.style.display = 'none';
+    }
+
     // Mostrar/ocultar campos según modo
     const contFecha = document.getElementById('container-fecha');
     const contFrec  = document.getElementById('container-frecuencia');
@@ -469,6 +499,14 @@ function setModoApp(modo) {
                                hoy.getFullYear();
         }
     }
+
+    // Limpiar reparaciones si estaban inyectadas
+    const repRoot = document.getElementById('_rep-root');
+    if (repRoot) repRoot.style.display = 'none';
+
+    // Restaurar área de trabajo
+    const areaTrab = document.getElementById('area-trabajo');
+    if (areaTrab) areaTrab.style.display = 'block';
 
     switchTab('crear');
     // Limpiar form inline (limpiarFormulario no existe como función separada)
@@ -500,23 +538,31 @@ function switchTab(tab) {
         if (tabC) { tabC.classList.add('activo'); }
         if (tabG) { tabG.classList.remove('activo'); }
         if (arcaCont) arcaCont.style.display = 'none';
-
-        // Auto-rellenar fecha si es presupuesto y el campo está vacío
-        if (modoApp === 'presupuestos') {
-            const inp = document.getElementById('input-fecha-presup');
-            if (inp && !inp.value.trim()) {
-                const hoy = new Date();
-                inp.value = String(hoy.getDate()).padStart(2,'0') + '/' +
-                            String(hoy.getMonth()+1).padStart(2,'0') + '/' +
-                            hoy.getFullYear();
-            }
-        }
+        // Ocultar vista de reparaciones si estaba abierta
+        const repRoot = document.getElementById('_rep-root');
+        if (repRoot) repRoot.style.display = 'none';
+        // Activar/desactivar tab de reparaciones
+        const tabRep = document.getElementById('tab-reparaciones');
+        if (tabRep) tabRep.classList.remove('activo');
+    } else if (tab === 'reparaciones') {
+        if (crear)   crear.style.display   = 'none';
+        if (creados) creados.style.display  = 'none';
+        if (arcaCont) arcaCont.style.display = 'none';
+        if (tabC) tabC.classList.remove('activo');
+        if (tabG) tabG.classList.remove('activo');
+        const tabRep = document.getElementById('tab-reparaciones');
+        if (tabRep) tabRep.classList.add('activo');
+        if (typeof mostrarVistaReparaciones === 'function') mostrarVistaReparaciones();
     } else {
         if (crear)   crear.style.display   = 'none';
         if (creados) creados.style.display  = 'block';
         if (tabC) { tabC.classList.remove('activo'); }
         if (tabG) { tabG.classList.add('activo'); }
         if (arcaCont) arcaCont.style.display = modoApp === 'presupuestos' ? 'block' : 'none';
+        const repRoot = document.getElementById('_rep-root');
+        if (repRoot) repRoot.style.display = 'none';
+        const tabRep = document.getElementById('tab-reparaciones');
+        if (tabRep) tabRep.classList.remove('activo');
         obtenerYRenderizarCreados();
     }
 }
