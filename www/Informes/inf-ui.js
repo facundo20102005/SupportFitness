@@ -9,7 +9,7 @@ async function obtenerDolar() {
             _actualizarLabelDolar('caché');
             return;
         }
-    } catch(e) {}
+    } catch(e) { console.warn("[inf-ui] Error:", e?.message || e); }
  
     // 2. Fetch con timeout compatible con TODOS los navegadores
     //    (usa AbortController + setTimeout, NO AbortSignal.timeout)
@@ -31,7 +31,7 @@ async function obtenerDolar() {
     const resultados = await Promise.allSettled(
         fuentes.map(async fuente => {
             try {
-                const r    = await fetchConTimeout(fuente.url, 7000);
+                const r    = await fetchConTimeout(fuente.url, SF_TIMEOUT?.API_DOLAR || 7000);
                 const data = await r.json();
                 const parsed = fuente.parse(data);
                 if (!parsed || !parsed.venta || Number(parsed.venta) < 100) {
@@ -64,7 +64,7 @@ async function obtenerDolar() {
                 _actualizarLabelDolar('caché-vieja');
                 return;
             }
-        } catch(e) {}
+        } catch(e) { console.warn("[inf-ui] Error:", e?.message || e); }
         // Sin caché: actualizar el label con el valor por defecto y advertencia
         _actualizarLabelDolar('sin-conexion');
     }
@@ -464,15 +464,15 @@ function setModoApp(modo) {
             if (tabC) {
                 const tabRep = document.createElement('button');
                 tabRep.id = 'tab-reparaciones';
-                tabRep.className = 'sub-tab';
+                tabRep.className = 'tab-btn';
                 tabRep.innerHTML = '🔧 Presupuestar';
-                // FIX: sin inline styles para que los CSS de .sub-tab e #tab-reparaciones tomen efecto
+                tabRep.style.cssText = 'flex:1;padding:12px 8px;background:rgba(255,255,255,0.05);color:#f1f5f9;border:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;';
                 tabRep.onclick = function() { switchTab('reparaciones'); };
                 tabC.parentNode.appendChild(tabRep);
             }
         }
         const tabRep = document.getElementById('tab-reparaciones');
-        if (tabRep) { tabRep.style.display = ''; } // FIX: dejar que flex del .sub-tabs maneje el tamaño
+        if (tabRep) { tabRep.style.display = 'inline-block'; }
     } else {
         // Ocultar tab y vista de reparaciones en Ofertas
         const tabRep = document.getElementById('tab-reparaciones');

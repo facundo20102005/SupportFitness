@@ -184,38 +184,4 @@ body {
     .item-presupuesto.final td:nth-of-type(3):before { content: "Disp.:"; }
     .item-presupuesto.final td:nth-of-type(4):before { content: "Total:"; }
 }
-.ul-nav {
-    list-style: none;
-    display: flex;
-    width: 100%;
-    justify-content: space-around;
-    align-items: center;
-    padding: 0;
-    margin: 0;
-    height: 100%;
-}
-.ul-nav li {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100%;
-}
-.bottom-nav-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    background: transparent;
-    border: none;
-    color: #5f6368;
-    font-weight: 700;
-    font-size: 11px;
-    padding: 5px 0;
-}
-.bottom-nav-btn .bnav-icon {
-    font-size: 20px;
-    margin-bottom: 3px;
-}
+/* .ul-nav, .bottom-nav-btn y .bnav-icon ya definidos en style.css — no duplicar */

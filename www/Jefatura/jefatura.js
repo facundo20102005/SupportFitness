@@ -3,7 +3,7 @@
 //  FIXES: matching flexible, motivo vacío, gyms del mes, timeout API
 // ============================================================
 
-const API_URL = "https://script.google.com/macros/s/AKfycbz3m7DoeDccCaL5oChb7dL9dz0fbs2DdAWXaEt_wEXAGn6R-U-15Jm3nomOAbQteIWN/exec";
+// API_URL: cargada desde inf-config.js (window.API_URL). No redeclarar aquí.
 
 // ── Estado global ─────────────────────────────────────────
 let historialGlobal         = [];
@@ -224,7 +224,7 @@ async function cargarIngresosJefatura() {
     try {
         const docs = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos de Reparacion" } });
         cacheDocumentosJefatura = docs || [];
-    } catch(e) {}
+    } catch(e) { console.warn("[jefatura] Error silenciado:", e?.message || e); }
     actualizarKPIIngresos();
 }
 

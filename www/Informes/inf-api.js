@@ -92,7 +92,7 @@ async function cargarAppInformes() {
 
     try {
         listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
-        let cuitDic = (() => { try { return JSON.parse(localStorage.getItem('cuitGlobalDic')) || {}; } catch(e){ return {}; } })();
+        let cuitDic = (() => { try { return JSON.parse(localStorage.getItem('cuitGlobalDic')) || {}; } catch(e){ return {}; /* localStorage parse error — ok */ } })();
         listaAbonosBase.forEach(abono => {
             let cuitLimpio = String(abono.cuit).replace(/\D/g, "");
             if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym;
@@ -114,7 +114,7 @@ async function cargarAppInformes() {
     if (selAnio) selAnio.value = yyyy;
     if (selMesA) selMesA.value = `${yyyy}-${mm}`;
 
-    await cargarDatosBase().catch(() => {});
+    await cargarDatosBase().catch(e => console.warn("[inf-api] Promise swallowed:", e?.message || e));
 }
 
 // ── Banner de error de conexión ──────────────────────────────────
@@ -179,7 +179,7 @@ function cambioMesPersonalizado() {
 // FIX PRINCIPAL: agregado AbortController con timeout de 15 segundos.
 // Si Google Apps Script tarda más de 15s, se aborta limpiamente con
 // un mensaje de error claro en lugar de quedar colgado indefinidamente.
-async function llamarAPI(accionObj, timeoutMs = 15000) {
+async function llamarAPI(accionObj, timeoutMs = (typeof SF_TIMEOUT !== "undefined" ? SF_TIMEOUT.NORMAL : 15000)) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 

@@ -156,7 +156,7 @@ function _renderCalc() {
     // ── Fórmula EXACTA igual a inf-ui.js → actualizarPrecioItem ──────────
     // totalUSD = metros × precioMetroUSD + terminales × 10USD
     // totalARS = totalUSD × dólar × cant
-    const PRECIO_TERMINAL_USD = 10;
+    const PRECIO_TERMINAL_USD = (typeof SF_PRECIO_TERMINAL_USD !== "undefined") ? SF_PRECIO_TERMINAL_USD : 10;
     const dolarActual = (typeof valorDolarOficial !== 'undefined' && valorDolarOficial > 100) ? valorDolarOficial : 1000;
     let subtotal = 0;
     const rows = _calcItems.map(function(item, idx) {
@@ -306,7 +306,7 @@ function _abrirModalFactura(visita, prefillTipo, prefillNum) {
             for (const [c, g] of Object.entries(dic)) {
                 if (_matchGym(g)) { cuit = c; break; }
             }
-        } catch(e) {}
+        } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     }
     if (!cuit && _repVisitas && _repVisitas.length) {
         const match = _repVisitas.find(function(v) { return _matchGym(v.gym) && v.cuit; });
@@ -360,7 +360,7 @@ async function _buscarMatchARCA(gym) {
     if (!badge) return;
     badge.textContent = '🔍 Buscando en ARCA...';
     try {
-        const docs = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, 10000);
+        const docs = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, SF_TIMEOUT?.API_DOLAR || 10000);
         if (!Array.isArray(docs)) { badge.textContent = ''; return; }
         const gymN = gym.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
         const matches = docs.filter(function(d) {
@@ -390,7 +390,7 @@ async function _confirmarFactura(remito, gym, fechaStr) {
             const cuitLimpio = cuit.replace(/\D/g, '');
             if (cuitLimpio) dic[cuitLimpio] = gym;
             localStorage.setItem('cuitGlobalDic', JSON.stringify(dic));
-        } catch(e) {}
+        } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     }
 
     // Actualizar estado local inmediatamente (UX instantánea)
@@ -399,8 +399,8 @@ async function _confirmarFactura(remito, gym, fechaStr) {
     document.getElementById('_rep-modal-factura')?.remove();
     _setTabRep('facturado');
     // Guardar en servidor
-    try { await llamarAPI({ accion: "guardarPresupuestoEmitido", payload: { cliente: gym, factura: nroFact, cuit, periodo: fechaStr, total: 0, correo: '', remito } }, 15000); } catch(e) {}
-    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym, fecha: fechaStr, estado: nroFact } }, 15000); } catch(e) {}
+    try { await llamarAPI({ accion: "guardarPresupuestoEmitido", payload: { cliente: gym, factura: nroFact, cuit, periodo: fechaStr, total: 0, correo: '', remito } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
+    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym, fecha: fechaStr, estado: nroFact } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -453,13 +453,24 @@ function _abrirMenuEstado(repIdx) {
 // ════════════════════════════════════════════════════════════════
 //  ESTADOS
 // ════════════════════════════════════════════════════════════════
-function _clasEstado(raw) {
-    const f = (raw || '').toLowerCase().trim();
-    if (f === 'pagado' || f === 'pago')                              return 'pagado';
-    if (f === 'facturado' || f === 'si' || f.startsWith('factura ')) return 'facturado';
-    if (f === 'presupuestado') return 'presupuestado';
-    if (f === 'enviado')       return 'enviado';
-    if (f === 'no')            return 'no';
+// FIX: clasEstado ahora recibe la visita completa (o un string por retrocompat.)
+// Prioriza el campo pago (col H) sobre facturado (col G).
+function _clasEstado(rawOrVisita) {
+    let pago      = '';
+    let facturado = '';
+    if (rawOrVisita && typeof rawOrVisita === 'object') {
+        pago      = String(rawOrVisita.pago      || '').toLowerCase().trim();
+        facturado = String(rawOrVisita.facturado || '').toLowerCase().trim();
+    } else {
+        facturado = String(rawOrVisita || '').toLowerCase().trim();
+    }
+    if (pago === 'pagado' || pago === 'pago')                        return 'pagado';
+    if (facturado === 'pagado' || facturado.startsWith('pagado'))    return 'pagado';
+    if (facturado === 'facturado' || facturado === 'si'
+        || facturado.startsWith('factura '))                         return 'facturado';
+    if (facturado === 'presupuestado')                               return 'presupuestado';
+    if (facturado === 'enviado')                                     return 'enviado';
+    if (facturado === 'no')                                          return 'no';
     return 'pendiente';
 }
 function _confEstado(e) {
@@ -498,91 +509,132 @@ function _setTabRep(tab) {
 // ════════════════════════════════════════════════════════════════
 //  TARJETA — SIN <script> tags, sin position:absolute en menú
 // ════════════════════════════════════════════════════════════════
+// ── _buildCard: genera el HTML de una tarjeta de reparación ─────────────
+// Usa template literals para evitar concatenaciones ilegibles.
+// Cada sección se extrae a una función helper que devuelve string.
 function _buildCard(visita, repIdx) {
-    const uid      = ++_repUID;
-    const estado   = _clasEstado(visita.facturado);
-    const conf     = _confEstado(estado);
-    const sugs     = _sugerirItems(visita.motivo);
-    const cants    = _extraerCant(visita.motivo);
+    const uid    = ++_repUID;
+    const estado = _clasEstado(visita);   // FIX: pasa la visita completa para leer pago + facturado
+    const conf   = _confEstado(estado);
+    const sugs   = _sugerirItems(visita.motivo);
+    const cants  = _extraerCant(visita.motivo);
 
-    // Motivo formateado
-    const partes   = (visita.motivo || '').split(/\s*\+\s*/).map(p => p.trim()).filter(Boolean);
-    const motivoH  = partes.map(function(p, i) {
-        return '<div style="padding:1px 0;font-size:12.5px;color:' + (i === 0 ? _COL.text : '#cbd5e1') + ';line-height:1.4;">'
-            + (i > 0 ? '<span style="color:' + _COL.muted + ';margin-right:4px;">+</span>' : '') + p + '</div>';
-    }).join('');
+    // ── Motivo: cada parte del '+' en su propia línea ──────────────────────
+    const partes  = (visita.motivo || '').split(/\s*\+\s*/).map(p => p.trim()).filter(Boolean);
+    const motivoH = partes.map((p, i) => `
+        <div style="padding:1px 0;font-size:12.5px;color:${i === 0 ? _COL.text : '#cbd5e1'};line-height:1.4;">
+            ${i > 0 ? `<span style="color:${_COL.muted};margin-right:4px;">+</span>` : ''}${p}
+        </div>`).join('');
 
-    // Tags cantidades
-    let cantH = '';
-    if (cants.metros)    cantH += '<span style="background:' + _COL.blueBg + ';color:' + _COL.blue + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px;">📏 ' + cants.metros + 'm cable</span>';
-    if (cants.terminales)cantH += '<span style="background:' + _COL.blueBg + ';color:' + _COL.blue + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px;">🔩 ' + cants.terminales + ' term.</span>';
-    if (cants.rodillos)  cantH += '<span style="background:' + _COL.greenBg + ';color:' + _COL.green + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px;">🔩 ' + cants.rodillos + ' rod.</span>';
-    if (cants.tapTipo)   cantH += '<span style="background:' + _COL.orangeBg + ';color:' + _COL.orange + ';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px;">🪡 Tap. ' + cants.tapTipo + '</span>';
+    // ── Tags de cantidades detectadas automáticamente ──────────────────────
+    const _tag = (bg, color, txt) =>
+        `<span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px;">${txt}</span>`;
+    const cantH = [
+        cants.metros     && _tag(_COL.blueBg,   _COL.blue,   `📏 ${cants.metros}m cable`),
+        cants.terminales && _tag(_COL.blueBg,   _COL.blue,   `🔩 ${cants.terminales} term.`),
+        cants.rodillos   && _tag(_COL.greenBg,  _COL.green,  `🔩 ${cants.rodillos} rod.`),
+        cants.tapTipo    && _tag(_COL.orangeBg, _COL.orange, `🪡 Tap. ${cants.tapTipo}`),
+    ].filter(Boolean).join('');
 
-    // Sugerencias — IDs únicos con uid
-    let sugsH = sugs.length === 0
-        ? '<p style="font-size:11px;color:' + _COL.muted + ';padding:6px 0;margin:0;">No se detectaron ítems. Usá la Lista de Precios ↑</p>'
-        : sugs.map(function(s) {
-            const esCable = s.nombre.toLowerCase().includes('cable');
-            const idC = '_rc_' + uid + '_' + s.nombre.replace(/\W/g, '').slice(0, 10);
-            const idM = '_rm_' + uid + '_' + s.nombre.replace(/\W/g, '').slice(0, 10);
-            const idT = '_rt_' + uid + '_' + s.nombre.replace(/\W/g, '').slice(0, 10);
-            const cantSug = esCable && cants.cables ? cants.cables
-                : s.nombre.toLowerCase().includes('rodillo') && cants.rodillos ? cants.rodillos : 1;
-            const lbl    = s.info.moneda === 'USD' ? 'U$D ' + s.info.precio + ' → ' + _fmtARS(s.precioARS) : _fmtARS(s.precioARS);
-            const nomEsc = s.nombre.replace(/'/g, "\\'");
-            const gymEsc = visita.gym.replace(/'/g, "\\'");
-            return '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">'
-                + '<div style="font-size:11.5px;font-weight:700;color:' + _COL.text + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px;">' + s.nombre + '</div>'
-                + '<div style="font-size:10px;color:' + _COL.muted + ';margin-bottom:5px;">' + lbl + ' · c/IVA: ' + _fmtARS(Math.round(s.precioARS * 1.21)) + '</div>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">'
-                + '<span style="font-size:10px;color:' + _COL.muted + ';">Cant:</span>'
-                + '<input type="number" min="1" value="' + cantSug + '" id="' + idC + '" style="width:44px;padding:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.07);color:' + _COL.text + ';font-size:12px;text-align:center;">'
-                + (esCable ? '<span style="font-size:10px;color:' + _COL.accent + ';">📏m:</span>'
-                           + '<input type="number" min="0.5" step="0.5" value="' + (cants.metros || 1) + '" id="' + idM + '" style="width:50px;padding:3px;border-radius:6px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.07);color:' + _COL.accent + ';font-size:12px;text-align:center;">'
-                           + '<span style="font-size:10px;color:' + _COL.accent + ';">🔩t:</span>'
-                           + '<input type="number" min="0" value="' + (cants.terminales || 2) + '" id="' + idT + '" style="width:44px;padding:3px;border-radius:6px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.07);color:' + _COL.accent + ';font-size:12px;text-align:center;">'
-                    : '')
-                + '<button onclick="(function(){'
-                + 'var c=parseInt(document.getElementById(\'' + idC + '\')?.value)||1;'
-                + (esCable ? 'var m=parseFloat(document.getElementById(\'' + idM + '\')?.value)||null;var t=parseInt(document.getElementById(\'' + idT + '\')?.value)||null;' : 'var m=null,t=null;')
-                + '_repGymActivo=\'' + gymEsc + '\';'
-                + '_calcAgregar(\'' + nomEsc + '\',' + s.precioARS + ',c,m,t);'
-                + '})()" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">+ Agregar</button>'
-                + '</div></div>';
-        }).join('');
+    // ── Sugerencias de ítems basadas en el motivo de la visita ────────────
+    // Función _buildSugerencia para un solo ítem (extrae lógica del .map)
+    function _buildSugerencia(s) {
+        const esCable = s.nombre.toLowerCase().includes('cable');
+        const idC = `_rc_${uid}_${s.nombre.replace(/\W/g, '').slice(0, 10)}`;
+        const idM = `_rm_${uid}_${s.nombre.replace(/\W/g, '').slice(0, 10)}`;
+        const idT = `_rt_${uid}_${s.nombre.replace(/\W/g, '').slice(0, 10)}`;
+        const cantSug = esCable && cants.cables ? cants.cables
+            : s.nombre.toLowerCase().includes('rodillo') && cants.rodillos ? cants.rodillos : 1;
+        const lbl = s.info.moneda === 'USD'
+            ? `U$D ${s.info.precio} → ${_fmtARS(s.precioARS)}`
+            : _fmtARS(s.precioARS);
+        // Onclick sin concatenación — usa data-* y un listener centralizado
+        const onclickFn = `_agregarSugerencia('${idC}','${esCable ? idM : ''}','${esCable ? idT : ''}','${s.nombre.replace(/'/g,"\\'")}',${s.precioARS},'${visita.gym.replace(/'/g,"\\'")}',${s.info.precio || 0})`;
+        const inputCable = esCable ? `
+            <span style="font-size:10px;color:${_COL.accent};">📏m:</span>
+            <input type="number" min="0.5" step="0.5" value="${cants.metros || 1}" id="${idM}"
+                style="width:50px;padding:3px;border-radius:6px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.07);color:${_COL.accent};font-size:12px;text-align:center;">
+            <span style="font-size:10px;color:${_COL.accent};">🔩t:</span>
+            <input type="number" min="0" value="${cants.terminales || 2}" id="${idT}"
+                style="width:44px;padding:3px;border-radius:6px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.07);color:${_COL.accent};font-size:12px;text-align:center;">` : '';
+        return `
+            <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <div style="font-size:11.5px;font-weight:700;color:${_COL.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px;">${s.nombre}</div>
+                <div style="font-size:10px;color:${_COL.muted};margin-bottom:5px;">${lbl} · c/IVA: ${_fmtARS(Math.round(s.precioARS * 1.21))}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                    <span style="font-size:10px;color:${_COL.muted};">Cant:</span>
+                    <input type="number" min="1" value="${cantSug}" id="${idC}"
+                        style="width:44px;padding:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.07);color:${_COL.text};font-size:12px;text-align:center;">
+                    ${inputCable}
+                    <button onclick="${onclickFn}"
+                        style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">
+                        + Agregar
+                    </button>
+                </div>
+            </div>`;
+    }
 
-    // Badge de estado — botón que abre modal overlay (sin dropdown absoluto)
+    const sugsH = sugs.length === 0
+        ? `<p style="font-size:11px;color:${_COL.muted};padding:6px 0;margin:0;">No se detectaron ítems. Usá la Lista de Precios ↑</p>`
+        : sugs.map(_buildSugerencia).join('');
+
+    // ── Badge de estado ────────────────────────────────────────────────────
     const esFacturado = estado === 'facturado';
-    // Para facturados: mostrar número de factura + botón editar
     const factNum = esFacturado && visita.facturado && visita.facturado.toLowerCase() !== 'facturado'
         ? visita.facturado : '';
-    const estadoBadge = '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">'
-        + '<button onclick="_abrirMenuEstado(' + repIdx + ')"'
-        + ' style="background:' + conf.bg + ';color:' + conf.color + ';border:1px solid ' + conf.border + ';'
-        + 'border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;">'
-        + conf.label + ' ▾</button>'
-        + (esFacturado
-            ? '<button onclick="_editarFactura(' + repIdx + ')" style="background:rgba(110,231,183,0.1);color:#6ee7b7;border:1px solid rgba(110,231,183,0.2);border-radius:6px;padding:3px 8px;font-size:9px;font-weight:800;cursor:pointer;">✏️ Editar factura</button>'
-            : '')
-        + (factNum ? '<div style="font-size:9px;color:#6ee7b7;font-weight:700;text-align:right;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + factNum + '">📄 ' + factNum + '</div>' : '')
-        + '</div>';
+    const estadoBadge = `
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+            <button onclick="_abrirMenuEstado(${repIdx})"
+                style="background:${conf.bg};color:${conf.color};border:1px solid ${conf.border};
+                       border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;">
+                ${conf.label} ▾
+            </button>
+            ${esFacturado ? `<button onclick="_editarFactura(${repIdx})"
+                style="background:rgba(110,231,183,0.1);color:#6ee7b7;border:1px solid rgba(110,231,183,0.2);
+                       border-radius:6px;padding:3px 8px;font-size:9px;font-weight:800;cursor:pointer;">
+                ✏️ Editar factura
+            </button>` : ''}
+            ${factNum ? `<div style="font-size:9px;color:#6ee7b7;font-weight:700;text-align:right;
+                max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${factNum}">
+                📄 ${factNum}
+            </div>` : ''}
+        </div>`;
 
-    return '<div style="background:' + _COL.card + ';border:1px solid ' + conf.border + ';border-radius:14px;overflow:visible;margin-bottom:10px;">'
-        + '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05);border-radius:14px 14px 0 0;">'
-        + '<div style="flex:1;min-width:0;">'
-        + '<div style="font-size:14px;font-weight:900;color:' + _COL.text + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (visita.necesitaRep ? '🔧 ' : '') + visita.gym + '</div>'
-        + '<div style="font-size:10.5px;color:' + _COL.muted + ';margin-top:2px;">📅 ' + visita.fechaStr + (visita.tecnico ? ' · 👤 ' + visita.tecnico : '') + (visita.remito ? ' · ' + visita.remito : '') + '</div>'
-        + '</div>'
-        + estadoBadge
-        + '</div>'
-        + '<div style="padding:10px 14px 5px;">' + motivoH + '</div>'
-        + (cantH ? '<div style="padding:3px 14px 8px;display:flex;flex-wrap:wrap;gap:4px;">' + cantH + '</div>' : '')
-        + '<details style="padding:0 14px 10px;">'
-        + '<summary style="cursor:pointer;font-size:11px;font-weight:800;color:' + _COL.accent + ';padding:6px 0;user-select:none;list-style:none;">▶ 💡 Sugerencias (' + sugs.length + ' ítems) — clic para ver</summary>'
-        + '<div style="margin-top:6px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04);">' + sugsH + '</div>'
-        + '</details>'
-        + '</div>';
+    // ── Card completa ──────────────────────────────────────────────────────
+    return `
+        <div style="background:${_COL.card};border:1px solid ${conf.border};border-radius:14px;overflow:visible;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05);border-radius:14px 14px 0 0;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:14px;font-weight:900;color:${_COL.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${visita.necesitaRep ? '🔧 ' : ''}${visita.gym}
+                    </div>
+                    <div style="font-size:10.5px;color:${_COL.muted};margin-top:2px;">
+                        📅 ${visita.fechaStr}${visita.tecnico ? ` · 👤 ${visita.tecnico}` : ''}${visita.remito ? ` · ${visita.remito}` : ''}
+                    </div>
+                </div>
+                ${estadoBadge}
+            </div>
+            <div style="padding:10px 14px 5px;">${motivoH}</div>
+            ${cantH ? `<div style="padding:3px 14px 8px;display:flex;flex-wrap:wrap;gap:4px;">${cantH}</div>` : ''}
+            <details style="padding:0 14px 10px;">
+                <summary style="cursor:pointer;font-size:11px;font-weight:800;color:${_COL.accent};padding:6px 0;user-select:none;list-style:none;">
+                    ▶ 💡 Sugerencias (${sugs.length} ítems) — clic para ver
+                </summary>
+                <div style="margin-top:6px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04);">
+                    ${sugsH}
+                </div>
+            </details>
+        </div>`;
+}
+
+// ── _agregarSugerencia: helper centralizado llamado desde los botones ──────
+// Evita el onclick con código JS inline que era ilegible y propenso a errores.
+function _agregarSugerencia(idC, idM, idT, nombre, precioARS, gym, precioBaseUSD) {
+    const cant = parseInt(document.getElementById(idC)?.value) || 1;
+    const metros = idM ? (parseFloat(document.getElementById(idM)?.value) || null) : null;
+    const terms  = idT ? (parseInt(document.getElementById(idT)?.value) || null) : null;
+    _repGymActivo = gym;
+    _calcAgregar(nombre, precioARS, cant, metros, terms, precioBaseUSD || 0);
 }
 
 // ── Abrir modal de factura para EDITAR un ya-facturado ──────────
@@ -602,19 +654,18 @@ async function _cambiarEstadoRep(idx, nuevoEstado) {
     if (nuevoEstado === 'facturado') { _abrirModalFactura(visita); return; }
     // Pagado: conservar el número de factura en el campo, agregar prefijo
     if (nuevoEstado === 'pagado') {
-        const yaFacturado = _clasEstado(visita.facturado) === 'facturado';
-        const nroFact = yaFacturado ? visita.facturado : '';
-        visita.facturado = 'Pagado' + (nroFact ? ' · ' + nroFact : '');
+        // FIX: "Pagado" actualiza un campo separado — NO sobreescribe visita.facturado
+        // (que es col G). El pago va a col H. Localmente reflejamos esto igual.
+        visita.pago = 'Pagado';
         _setTabRep('pagado');
-        // Actualizar en el Sheet: columna facturado = "Pagado" y en Presupuestos_Emitidos pago=pagado
-        try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: visita.gym, fecha: visita.fechaStr, estado: visita.facturado } }, 15000); } catch(e) {}
-        try { await llamarAPI({ accion: "actualizarPagoReparacion", payload: { gym: visita.gym, remito: visita.remito, pago: 'Pagado' } }, 15000); } catch(e) {}
+        try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: visita.gym, fecha: visita.fechaStr, estado: 'Pagado', remito: visita.remito || '' } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
+        try { await llamarAPI({ accion: "actualizarPagoReparacion", payload: { gym: visita.gym, remito: visita.remito, pago: 'Pagado' } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
         return;
     }
     visita.facturado = nuevoEstado;
-    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: visita.gym, fecha: visita.fechaStr, estado: nuevoEstado } }, 15000); } catch(e) {}
+    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: visita.gym, fecha: visita.fechaStr, estado: nuevoEstado } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     if (nuevoEstado === 'presupuestado' || nuevoEstado === 'enviado') {
-        try { await llamarAPI({ accion: "guardarPresupuestoEmitido", payload: { cliente: visita.gym, factura: '', periodo: visita.fechaStr, total: 0, correo: '', remito: visita.remito || '' } }, 15000); } catch(e) {}
+        try { await llamarAPI({ accion: "guardarPresupuestoEmitido", payload: { cliente: visita.gym, factura: '', periodo: visita.fechaStr, total: 0, correo: '', remito: visita.remito || '' } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     }
     _setTabRep(nuevoEstado);
 }
@@ -650,11 +701,11 @@ function _renderTarjetas() {
         return p.length === 3 && (p[2] + '-' + p[1]) === _repMesFiltro;
     });
 
-    const visiblesTab = visitas.filter(function(v) { return _clasEstado(v.facturado) === _repTabActivo; });
+    const visiblesTab = visitas.filter(function(v) { return _clasEstado(v) === _repTabActivo; });
 
     // Actualizar contadores de tabs
     const grupos = { pendiente: 0, presupuestado: 0, enviado: 0, facturado: 0 };
-    visitas.forEach(function(v) { const e = _clasEstado(v.facturado); if (grupos[e] !== undefined) grupos[e]++; });
+    visitas.forEach(function(v) { const e = _clasEstado(v); if (grupos[e] !== undefined) grupos[e]++; });
     _TABS_REP.forEach(function(t) {
         const el = document.getElementById('_rtab-lbl-' + t.id);
         const baseLabel = t.label.split(' ').slice(1).join(' ');
@@ -695,7 +746,7 @@ async function renderizarVistaReparaciones() {
     cont.innerHTML = '<div style="text-align:center;padding:24px;color:' + _COL.muted + ';">⏳ Cargando...</div>';
     let visitas = [];
     try {
-        visitas = await llamarAPI({ accion: "obtenerReparacionesPendientes", payload: { dias: 90 } }, 20000);
+        visitas = await llamarAPI({ accion: "obtenerReparacionesPendientes", payload: { dias: 90 } }, SF_TIMEOUT?.REPARACIONES || 20000);
     } catch(e) {
         // FIX: fallback mejorado — usar historialGlobal si está disponible (compartido entre módulos)
         const hist = window.historialGlobal || [];
@@ -854,7 +905,7 @@ function _actualizarKPIRep() {
     let countFact = 0, countPag = 0;
 
     _repVisitas.forEach(function(v) {
-        const e = _clasEstado(v.facturado);
+        const e = _clasEstado(v);
         const p = (v.fechaStr || '').split('/');
         const esMes = p.length === 3 && (p[2] + '-' + p[1]) === claveM;
         if (e === 'pendiente')     countPend++;
