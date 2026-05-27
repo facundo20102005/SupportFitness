@@ -65,7 +65,7 @@ const PRECIOS_PRESUPUESTOS = {
     "Reparación Placas MCB":                                                        { precio: 600000, moneda: "ARS" },
     "Correa Motor Life Fitness":                                                    { precio: 178000, moneda: "ARS" },
     "Reparación Generador (Bicicleta/Elíptico)":                                    { precio: 380000, moneda: "ARS" },
-    "Correas Bicicleta":                                                            { precio: 179000, moneda: "ARS" },
+    "Correas de tracción generador Bicicleta":                                                            { precio: 179000, moneda: "ARS" },
     "Cadenas Spinner 112L pro (Bicicleta)":                                         { precio:     44, moneda: "USD" },
     "Registro de doble acción":                                                     { precio:  42000, moneda: "ARS" },
     "Mosquetones":                                                                  { precio:  15000, moneda: "ARS" },
@@ -92,7 +92,7 @@ const PRECIOS_POR_CATEGORIA = {
     "⚙️ Correas": {
         "Correas de Motor":          { precio: 149000, moneda: "ARS" },
         "Correa Motor Life Fitness": { precio: 178000, moneda: "ARS" },
-        "Correas Bici":              { precio: 179000, moneda: "ARS" },
+        "Correas de tracción generador Bicicleta":              { precio: 179000, moneda: "ARS" },
         "Correas Elíptico":          { precio: 194000, moneda: "ARS" },
     },
     "🔬 Electrónica": {

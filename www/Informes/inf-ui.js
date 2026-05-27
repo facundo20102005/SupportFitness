@@ -9,7 +9,7 @@ async function obtenerDolar() {
             _actualizarLabelDolar('caché');
             return;
         }
-    } catch(e) { console.warn("[inf-ui] Error:", e?.message || e); }
+    } catch(e) {}
  
     // 2. Fetch con timeout compatible con TODOS los navegadores
     //    (usa AbortController + setTimeout, NO AbortSignal.timeout)
@@ -31,7 +31,7 @@ async function obtenerDolar() {
     const resultados = await Promise.allSettled(
         fuentes.map(async fuente => {
             try {
-                const r    = await fetchConTimeout(fuente.url, SF_TIMEOUT?.API_DOLAR || 7000);
+                const r    = await fetchConTimeout(fuente.url, 7000);
                 const data = await r.json();
                 const parsed = fuente.parse(data);
                 if (!parsed || !parsed.venta || Number(parsed.venta) < 100) {
@@ -64,7 +64,7 @@ async function obtenerDolar() {
                 _actualizarLabelDolar('caché-vieja');
                 return;
             }
-        } catch(e) { console.warn("[inf-ui] Error:", e?.message || e); }
+        } catch(e) {}
         // Sin caché: actualizar el label con el valor por defecto y advertencia
         _actualizarLabelDolar('sin-conexion');
     }
@@ -509,6 +509,13 @@ function setModoApp(modo) {
     if (areaTrab) areaTrab.style.display = 'block';
 
     switchTab('crear');
+    // GARANTÍA EXTRA: forzar visibilidad del formulario en caso de race condition o error previo
+    (function() {
+        var sc = document.getElementById('seccion-crear');
+        if (sc) sc.style.display = 'block';
+        var at = document.getElementById('area-trabajo');
+        if (at) at.style.display = 'block';
+    })();
     // Limpiar form inline (limpiarFormulario no existe como función separada)
     const gymIn = document.getElementById('input-gym');
     if (gymIn) gymIn.value = '';
@@ -521,7 +528,7 @@ function setModoApp(modo) {
     const detBurb = document.getElementById('detalle-motivo-burbuja');
     if (detBurb) detBurb.style.display = 'none';
     idEditando = null;
-    agregarItem();
+    try { agregarItem(); } catch(e) { console.warn('[inf-ui] agregarItem error:', e?.message || e); }
 }
 
 function switchTab(tab) {

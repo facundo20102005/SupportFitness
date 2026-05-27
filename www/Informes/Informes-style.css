@@ -1,12 +1,19 @@
 /* Importamos el CSS de la app principal para mantener tu diseño idéntico */
 @import url('../style.css');
 
-/* ⚡ FIX: Aniquilación de la línea blanca superior ⚡ */
+/* ⚡ FIX: Eliminar barra blanca/gris — fondo lo maneja el <style> inline del HTML ⚡ */
 html, body {
     margin: 0 !important;
     padding: 0;
     box-sizing: border-box;
-    background-color: #f0f2f5;
+    /* background-color eliminado: lo define body { background: var(--inf-bg) } del inline style */
+}
+
+/* Dark mode en el elemento HTML también — evita barra gris cuando el contenido
+   es más corto que el viewport (el html asoma por debajo del body) */
+html.dark-mode,
+body.dark-mode {
+    background-color: #0f1117 !important;
 }
 
 body { 

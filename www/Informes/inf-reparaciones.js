@@ -158,6 +158,12 @@ function _renderCalc() {
     // totalARS = totalUSD × dólar × cant
     const PRECIO_TERMINAL_USD = (typeof SF_PRECIO_TERMINAL_USD !== "undefined") ? SF_PRECIO_TERMINAL_USD : 10;
     const dolarActual = (typeof valorDolarOficial !== 'undefined' && valorDolarOficial > 100) ? valorDolarOficial : 1000;
+    const dolarEl = document.getElementById('_rep-calc-dolar');
+    if (dolarEl) {
+        dolarEl.textContent = '💱 USD = $' + Math.round(dolarActual).toLocaleString('es-AR')
+            + (dolarActual === 1000 ? ' (estimado)' : ' (oficial)');
+        dolarEl.style.color = dolarActual === 1000 ? _COL.orange : _COL.green;
+    }
     let subtotal = 0;
     const rows = _calcItems.map(function(item, idx) {
         const esCable = item.nombre.toLowerCase().includes('cable');
@@ -362,18 +368,46 @@ async function _buscarMatchARCA(gym) {
     try {
         const docs = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, SF_TIMEOUT?.API_DOLAR || 10000);
         if (!Array.isArray(docs)) { badge.textContent = ''; return; }
+
         const gymN = gym.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+
+        // Matching estricto por palabras (>3 letras) — evita falsos positivos
+        function _matchGymARCA(dn) {
+            if (!dn || dn.length < 3) return false;
+            if (dn === gymN || dn.includes(gymN) || gymN.includes(dn)) return true;
+            const wG = gymN.split(/\s+/).filter(function(w) { return w.length > 3; });
+            const wD = dn.split(/\s+/).filter(function(w) { return w.length > 3; });
+            if (!wG.length || !wD.length) return false;
+            var comunes = wG.filter(function(w) {
+                return wD.some(function(d) { return d === w || d.startsWith(w) || w.startsWith(d); });
+            });
+            return comunes.length >= 2;
+        }
+
         const matches = docs.filter(function(d) {
-            const dn = (d.gym || d.cliente || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
-            return dn.includes(gymN.slice(0, 10)) || gymN.includes(dn.slice(0, 10));
-        }).sort(function(a, b) { return (b.fecha || '').localeCompare(a.fecha || ''); }).slice(0, 3);
+            // Presupuestos_Emitidos usa "gimnasio" como header — también chequear "gym" y "cliente"
+            const raw = d.gimnasio || d.gym || d.cliente || d.Gimnasio || '';
+            const dn = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+            return _matchGymARCA(dn);
+        }).sort(function(a, b) {
+            // Ordenar por fecha más reciente primero
+            const fa = (a.fecha || a.periodo || '').replace(/\//g,'-');
+            const fb = (b.fecha || b.periodo || '').replace(/\//g,'-');
+            return fb.localeCompare(fa);
+        }).slice(0, 3);
+
         if (!matches.length) {
             badge.innerHTML = '<span style="color:#fb923c;">⚠️ Sin coincidencias en ARCA para este cliente.</span>';
         } else {
-            const last = matches[0];
-            badge.innerHTML = '<span style="color:#6ee7b7;">✅ ARCA: encontrado — ' + (last.fecha || '') + ' · ' + (last.total ? '$' + Number(last.total).toLocaleString('es-AR') : '') + '</span>';
+            const last  = matches[0];
+            const gymShow = last.gimnasio || last.gym || last.cliente || gym;
+            const factShow = last.factura || '';
+            badge.innerHTML = '<span style="color:#6ee7b7;">✅ ARCA: ' + gymShow
+                + (factShow ? ' · ' + factShow : '')
+                + (last.fecha || last.periodo ? ' · ' + (last.fecha || last.periodo) : '')
+                + '</span>';
         }
-    } catch(e) { badge.textContent = ''; }
+    } catch(e) { badge.textContent = ''; console.warn("[inf-rep] _buscarMatchARCA:", e?.message); }
 }
 
 async function _confirmarFactura(remito, gym, fechaStr) {
@@ -398,9 +432,18 @@ async function _confirmarFactura(remito, gym, fechaStr) {
     if (visita) visita.facturado = nroFact;
     document.getElementById('_rep-modal-factura')?.remove();
     _setTabRep('facturado');
-    // Guardar en servidor
+    // Persistir número de factura en localStorage (por remito) para sobrevivir recargas
+    if (remito) {
+        try {
+            const fc = JSON.parse(localStorage.getItem('_rep_fact_cache') || '{}');
+            fc[remito] = nroFact;
+            localStorage.setItem('_rep_fact_cache', JSON.stringify(fc));
+        } catch(ex) { console.warn("[inf-rep] fact_cache:", ex?.message); }
+    }
+
+    // Guardar en servidor — anti-duplicación: el backend verifica antes de insertar
     try { await llamarAPI({ accion: "guardarPresupuestoEmitido", payload: { cliente: gym, factura: nroFact, cuit, periodo: fechaStr, total: 0, correo: '', remito } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
-    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym, fecha: fechaStr, estado: nroFact } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
+    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym, fecha: fechaStr, estado: nroFact, remito } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -580,7 +623,10 @@ function _buildCard(visita, repIdx) {
 
     // ── Badge de estado ────────────────────────────────────────────────────
     const esFacturado = estado === 'facturado';
-    const factNum = esFacturado && visita.facturado && visita.facturado.toLowerCase() !== 'facturado'
+    const esPagado    = estado === 'pagado';
+    const _estadosSimples = ['facturado','pagado','pendiente','presupuestado','enviado','no','si',''];
+    const factNum = (esFacturado || esPagado) && visita.facturado
+        && !_estadosSimples.includes(visita.facturado.toLowerCase().trim())
         ? visita.facturado : '';
     const estadoBadge = `
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
@@ -594,9 +640,12 @@ function _buildCard(visita, repIdx) {
                        border-radius:6px;padding:3px 8px;font-size:9px;font-weight:800;cursor:pointer;">
                 ✏️ Editar factura
             </button>` : ''}
-            ${factNum ? `<div style="font-size:9px;color:#6ee7b7;font-weight:700;text-align:right;
+            ${factNum ? `<div style="font-size:9px;color:${esPagado ? '#86efac' : '#6ee7b7'};font-weight:700;text-align:right;
                 max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${factNum}">
-                📄 ${factNum}
+                💰 ${factNum}
+            </div>` : ''}
+            ${visita.totalARCA > 0 ? `<div style="font-size:10px;color:#34d399;font-weight:900;text-align:right;">
+                💵 $${Math.round(visita.totalARCA).toLocaleString('es-AR')}
             </div>` : ''}
         </div>`;
 
@@ -783,6 +832,16 @@ async function renderizarVistaReparaciones() {
         return pb.localeCompare(pa);
     });
     _repVisitas = visitas;
+    // Enriquecer con números de factura cacheados en localStorage (persisten entre recargas)
+    // El backend devuelve "facturado" en col G; el número real se guarda localmente al confirmar
+    try {
+        const fc = JSON.parse(localStorage.getItem('_rep_fact_cache') || '{}');
+        _repVisitas.forEach(function(v) {
+            if (v.remito && fc[v.remito] && (!v.facturado || v.facturado.toLowerCase() === 'facturado')) {
+                v.facturado = fc[v.remito];
+            }
+        });
+    } catch(ex) { console.warn("[inf-rep] fact_cache read:", ex?.message); }
     if (!visitas.length) {
         cont.innerHTML = '<div style="text-align:center;padding:32px;color:' + _COL.muted + ';">✅ No hay reparaciones en los últimos 90 días.</div>';
         return;
@@ -832,7 +891,8 @@ function _inyectarVistaReparaciones() {
         + '<div id="_rep-calc" style="background:' + _COL.surface + ';border:1px solid ' + _COL.border + ';border-radius:14px;padding:14px;margin-bottom:12px;">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         + '<div><div style="font-size:14px;font-weight:900;color:' + _COL.text + ';">🧮 Calculadora Rápida</div>'
-        + '<div id="_rep-calc-gym" style="font-size:11px;color:' + _COL.accent + ';margin-top:1px;font-weight:700;"></div></div>'
+        + '<div id="_rep-calc-gym" style="font-size:11px;color:' + _COL.accent + ';margin-top:1px;font-weight:700;"></div>'
+        + '<div id="_rep-calc-dolar" style="font-size:10px;font-weight:800;margin-top:2px;"></div></div>'
         + '<div style="display:flex;gap:8px;">'
         + '<button id="_rep-btn-lista" onclick="_toggleListaRep()" style="background:' + _COL.blueBg + ';color:' + _COL.blue + ';border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;">📋 Lista de Precios</button>'
         + '<button onclick="_calcLimpiar()" style="background:' + _COL.redBg + ';color:' + _COL.red + ';border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;">🗑️ Limpiar</button>'
@@ -853,7 +913,10 @@ function _inyectarVistaReparaciones() {
         // Encabezado
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         + '<div style="font-size:11px;font-weight:900;color:' + _COL.muted + ';text-transform:uppercase;letter-spacing:0.5px;">🔧 VISITAS CON TRABAJO (90 días)</div>'
+        + '<div style="display:flex;gap:6px;">'
+        + '<button onclick="_vincularConARCA()" style="background:linear-gradient(135deg,#7c3aed,#4c1d95);border:none;color:white;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;">🔗 Vincular ARCA</button>'
         + '<button onclick="renderizarVistaReparaciones()" style="background:none;border:1px solid rgba(255,255,255,0.1);color:' + _COL.muted + ';border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;">🔄 Actualizar</button>'
+        + '</div>'
         + '</div>'
         + '<div id="_rep-contenedor"></div>';
 
@@ -936,4 +999,99 @@ function _kpiItem(n, color, label, sub) {
 function ocultarVistaReparaciones() {
     const root = document.getElementById('_rep-root');
     if (root) root.style.display = 'none';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BADGE ESTADO — muestra número de factura en Facturado y Pagado
+// ════════════════════════════════════════════════════════════════
+// Patch en _buildCard: reemplazar el bloque estadoBadge para mostrar factNum en pagados también
+// Este parche sobreescribe la generación del badge de estado
+(function _patchBuildCard() {
+    // No necesita patch — _buildCard está en el cuerpo del archivo con el badge incluido
+    // Las modificaciones ya se aplican directamente en _buildCard
+})();
+
+// ════════════════════════════════════════════════════════════════
+//  VINCULAR CON ARCA — enriquece visitas con total real de la factura
+//  y actualiza la descripción en Presupuestos_Emitidos
+// ════════════════════════════════════════════════════════════════
+async function _vincularConARCA() {
+    const btn = document.querySelector('[onclick*="_vincularConARCA"]');
+    if (btn) { btn.textContent = '⏳ Vinculando...'; btn.disabled = true; }
+    try {
+        const docs = await llamarAPI(
+            { accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } },
+            SF_TIMEOUT?.NORMAL || 15000
+        );
+        if (!Array.isArray(docs)) throw new Error("Sin datos de ARCA");
+
+        // Normalizar número de factura para comparar
+        // "Factura B N°3974" → "b3974",  "B-3974" → "b3974"
+        function _normFact(f) {
+            return String(f || '').toLowerCase()
+                .replace(/factura\s+/gi, '').replace(/n[°o]\s*/gi, '')
+                .replace(/[\s\-\.]/g, '');
+        }
+
+        // Indexar docs de ARCA por factura normalizada y por remito
+        const arcaByFact   = {};
+        const arcaByRemito = {};
+        docs.forEach(function(d) {
+            const fn = _normFact(d.factura || d.numFactura || '');
+            if (fn) arcaByFact[fn] = d;
+            const rn = String(d.remito || d.Remito || '').trim();
+            if (rn) arcaByRemito[rn] = d;
+        });
+
+        let vinculados = 0;
+        const updPromises = [];
+
+        _repVisitas.forEach(function(v) {
+            const e = _clasEstado(v);
+            if (e !== 'facturado' && e !== 'pagado') return;
+
+            // Buscar por remito primero (más preciso), luego por factura
+            let match = (v.remito && arcaByRemito[v.remito]) || null;
+            if (!match && v.facturado) match = arcaByFact[_normFact(v.facturado)] || null;
+
+            if (match) {
+                v.totalARCA = Number(match.importe || match.total || 0);
+                // Si la entrada en ARCA tiene "Factura" en col C, usar ese número también
+                if (!v.facturado || v.facturado.toLowerCase() === 'facturado') {
+                    const nroArc = match.factura || match.Factura || '';
+                    if (nroArc) v.facturado = nroArc;
+                }
+                vinculados++;
+
+                // Actualizar descripción en Presupuestos_Emitidos si hay motivo real
+                if (v.motivo && v.motivo.trim().length > 5) {
+                    updPromises.push(
+                        llamarAPI({ accion: 'actualizarDescripcionEmitido', payload: {
+                            remito:      v.remito   || '',
+                            factura:     v.facturado || '',
+                            descripcion: v.motivo,
+                            total:       v.totalARCA
+                        }}, SF_TIMEOUT?.NORMAL || 15000).catch(function() {})
+                    );
+                }
+            }
+        });
+
+        await Promise.allSettled(updPromises);
+        _renderTarjetas();
+
+        // Mostrar resultado en la KPI bar
+        const kpiEl = document.getElementById('_rep-kpi-bar');
+        if (kpiEl) {
+            const msg = document.createElement('div');
+            msg.style.cssText = 'font-size:11px;color:#86efac;font-weight:800;padding:6px 14px;text-align:center;';
+            msg.textContent = '✅ Vinculados ' + vinculados + ' registro(s) con ARCA · Descripciones actualizadas';
+            kpiEl.parentNode.insertBefore(msg, kpiEl.nextSibling);
+            setTimeout(function() { msg.remove(); }, 5000);
+        }
+    } catch(e) {
+        console.warn("[inf-rep] _vincularConARCA error:", e?.message || e);
+    } finally {
+        if (btn) { btn.textContent = '🔗 Vincular ARCA'; btn.disabled = false; }
+    }
 }
