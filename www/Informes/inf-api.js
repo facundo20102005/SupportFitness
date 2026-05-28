@@ -1,6 +1,19 @@
 // ── inf-api.js — Comunicación con el servidor y carga inicial ──
 // AUDITORÍA: corregido timeout, manejo de errores, sesión básica
 
+// ── API_URL — Fallback por si inf-config.js no cargó ───────────────
+// inf-api.js puede ser cargado desde páginas que no tienen inf-config.js
+// (ej: Jefatura/index.html). Esta línea garantiza que API_URL esté siempre
+// definida, sin pisar la que ya existe si fue seteada por inf-config.js.
+if (typeof API_URL === 'undefined') {
+    // eslint-disable-next-line no-unused-vars
+    var API_URL = (typeof SF_API_URL !== 'undefined')
+        ? SF_API_URL
+        : (typeof window !== 'undefined' && window.API_URL)
+            ? window.API_URL
+            : "https://script.google.com/macros/s/AKfycbz3m7DoeDccCaL5oChb7dL9dz0fbs2DdAWXaEt_wEXAGn6R-U-15Jm3nomOAbQteIWN/exec";
+}
+
 // ── Gestión de sesión (token opaco) ─────────────────────────────
 // Mejora respecto al original: en lugar de guardar 'true' en localStorage,
 // se guarda el token real que devuelve el backend. Cada acción lo envía.
@@ -92,7 +105,7 @@ async function cargarAppInformes() {
 
     try {
         listaAbonosBase = await llamarAPI({ accion: "obtenerAbonosBD" });
-        let cuitDic = (() => { try { return JSON.parse(localStorage.getItem('cuitGlobalDic')) || {}; } catch(e){ return {}; /* localStorage parse error — ok */ } })();
+        let cuitDic = (() => { try { return JSON.parse(localStorage.getItem('cuitGlobalDic')) || {}; } catch(e){ return {}; } })();
         listaAbonosBase.forEach(abono => {
             let cuitLimpio = String(abono.cuit).replace(/\D/g, "");
             if (cuitLimpio && abono.gym) cuitDic[cuitLimpio] = abono.gym;
@@ -114,7 +127,7 @@ async function cargarAppInformes() {
     if (selAnio) selAnio.value = yyyy;
     if (selMesA) selMesA.value = `${yyyy}-${mm}`;
 
-    await cargarDatosBase().catch(e => console.warn("[inf-api] Promise swallowed:", e?.message || e));
+    await cargarDatosBase().catch(() => {});
 }
 
 // ── Banner de error de conexión ──────────────────────────────────
@@ -179,7 +192,7 @@ function cambioMesPersonalizado() {
 // FIX PRINCIPAL: agregado AbortController con timeout de 15 segundos.
 // Si Google Apps Script tarda más de 15s, se aborta limpiamente con
 // un mensaje de error claro en lugar de quedar colgado indefinidamente.
-async function llamarAPI(accionObj, timeoutMs = (typeof SF_TIMEOUT !== "undefined" ? SF_TIMEOUT.NORMAL : 15000)) {
+async function llamarAPI(accionObj, timeoutMs = 15000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
