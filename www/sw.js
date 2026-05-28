@@ -3,15 +3,12 @@
 //  FIXES APLICADOS:
 //  1. Precache con Promise.allSettled: un asset roto ya no cancela todo
 //  2. Listener de 'message' para forzar skipWaiting desde la app
-//  3. CACHE_VER como constante — ACTUALIZAR con cada deploy a producción
-//  4. Auto-skipWaiting: el SW nuevo toma control sin requerir acción del usuario
-//     (compatible con la estrategia de Vercel + Git auto-deploy)
+//  3. CACHE_VER como constante que se debe actualizar al deployar
 // ════════════════════════════════════════════════════════════════
 
-// ⚠️  ACTUALIZAR este string en cada commit que va a producción.
-//     Formato recomendado: 'sf-YYYYMMDD-HHMM'
-//     Basta con cambiar cualquier carácter para forzar reemplazo del cache.
-const CACHE_VER  = 'sf-20260524-1800';
+// IMPORTANTE: Cambiar este string cada vez que se suban cambios a producción.
+// Formato: 'sf-YYYYMMDD-HHMM' — evita que los usuarios vean versión vieja cacheada.
+const CACHE_VER  = 'sf-20260528-0136';
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
 // Assets que se intentan precargar al instalar el SW.
@@ -53,9 +50,6 @@ self.addEventListener('install', event => {
                     })
                 )
             )
-        // FIX 4: skipWaiting automático al instalar — nuevo SW toma control
-        // sin esperar que el usuario cierre todas las pestañas.
-        // Esto hace que cada deploy de Vercel/Git se vea inmediatamente.
         ).then(() => self.skipWaiting())
     );
 });
