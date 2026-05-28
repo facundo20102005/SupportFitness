@@ -1,9 +1,9 @@
 // --- CONFIGURACIÓN DE LA API DE GOOGLE ---
-// API_URL definida en inf-config.js (SF_API_URL / window.API_URL)
-const VERSION_APP = 1.0; // TODO: mover a inf-config.js en próxima iteración
+const API_URL = "https://script.google.com/macros/s/AKfycbz3m7DoeDccCaL5oChb7dL9dz0fbs2DdAWXaEt_wEXAGn6R-U-15Jm3nomOAbQteIWN/exec"; 
+const VERSION_APP = 1.0;
 
 // --- VARIABLES Y FUNCIONES RECUPERADAS ---
-// valorDolarOficial: inicializada en inf-config.js como window.valorDolarOficial
+let valorDolarOficial = 1000;
 let fechaSeleccionadaOriginal = "";
 let globalGymsOfertas = [];
 let globalGymsPresupuestos = [];
@@ -17,8 +17,8 @@ async function obtenerDolar() {
             const domDolar = document.getElementById('valor-dolar');
             if(domDolar) domDolar.innerText = `Dólar Oficial: $${valorDolarOficial}`;
         }
-    } catch (e) {
-        console.warn("[obtenerDolar] Falló la API, usando valor por defecto.", e.message);
+    } catch (e) { 
+        console.warn("Error al cargar dólar, usando valor por defecto."); 
     }
 }
 
@@ -52,8 +52,8 @@ async function cargarDatosBase() {
             // Fallback: usar el cronograma hardcodeado
             cronogramaZonasDinamico = null;
         }
-    } catch (e) {
-        console.error("[cargarDatosBase] Error:", e.message);
+    } catch (e) { 
+        console.error("Modo offline o error en historial"); 
     }
 }
 
@@ -346,33 +346,9 @@ window.eliminarArchivo = function(index) {
     if (window._renderizarFotos) window._renderizarFotos(window.archivosSeleccionados);
     if (typeof actualizarProgress === 'function') actualizarProgress();
 };
-function toggleHistorial() {
-    const panel = document.getElementById("contenedor-meses");
-    const btn   = document.getElementById("btnToggle");
-    const estaAbierto = panel.classList.contains("mostrar-en-movil");
-    panel.classList.toggle("mostrar-en-movil", !estaAbierto);
-    btn.innerText = estaAbierto ? "Ver Historial de Visitas ▼" : "Ocultar Historial ▲";
-}
-function mostrarLista(listaFiltrada, mostrar) {
-    const listaContainer = document.getElementById("lista");
-    listaContainer.innerHTML = "";
-    if (!mostrar || listaFiltrada.length === 0) {
-        listaContainer.style.display = "none";
-        return;
-    }
-    listaContainer.style.display = "block";
-    listaFiltrada.forEach(g => {
-        const item = document.createElement("div");
-        item.className    = "gym-list-item";
-        item.innerText    = g;
-        item.addEventListener("mousedown", e => e.preventDefault());
-        item.onclick      = () => seleccionar(g);
-        listaContainer.appendChild(item);
-    });
-}
-function normalizar(str) {
-    return str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
-}
+function toggleHistorial() { const panel = document.getElementById("contenedor-meses"); const btn = document.getElementById("btnToggle"); if (panel.classList.contains("mostrar-en-movil")) { panel.classList.remove("mostrar-en-movil"); btn.innerText = "Ver Historial de Visitas ▼"; } else { panel.classList.add("mostrar-en-movil"); btn.innerText = "Ocultar Historial ▲"; } }
+function mostrarLista(listaFiltrada, mostrar) { let listaContainer = document.getElementById("lista"); listaContainer.innerHTML = ""; if (!mostrar || listaFiltrada.length === 0) { listaContainer.style.display = "none"; return; } listaContainer.style.display = "block"; listaFiltrada.forEach(g => { let item = document.createElement("div"); item.className = "gym-list-item"; item.innerText = g; item.addEventListener('mousedown', function (e) { e.preventDefault(); }); item.onclick = () => seleccionar(g); listaContainer.appendChild(item); }); }
+function normalizar(str) { return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 function filtrar() {
     let val = document.getElementById("buscador").value;
     let valNorm = normalizar(val);
@@ -870,7 +846,13 @@ async function enviarFormulario() {
         reparacion: valReparacion, 
         lat: ubicacion.lat, 
         lng: ubicacion.lng, 
-        archivos: archivosProcesados // <-- AHORA SÍ VIAJAN LAS FOTOS AL BACKEND
+        archivos: archivosProcesados,
+        // ID único para este intento de envío — el backend lo usa para detectar duplicados.
+        // Si el mismo formulario llega dos veces (timeout + reenvío offline), el backend
+        // devuelve el resultado original sin insertar una segunda fila.
+        _submitId: (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : Date.now().toString(36) + Math.random().toString(36).slice(2)
     };
     
     const guardarLocal = async () => { 
@@ -913,7 +895,7 @@ async function enviarFormulario() {
                     "error"
                 );
                 // Guardar localmente también por si no se guardó
-                guardarOfflineBD(data).catch(e => console.warn("[app] Promise swallowed:", e?.message || e));
+                guardarOfflineBD(data).catch(() => {});
             } else if (error.message.includes("Failed to fetch") || error.message.includes("Network")) {
                 guardarLocal();
             } else {

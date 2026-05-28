@@ -1008,6 +1008,14 @@
                                 title="Ver historial de PDFs exportados en este dispositivo">
                             🗂️ Historial PDFs
                         </button>
+                        <button onclick="generarPDFListaMensual()"
+                                style="padding:8px 14px; background:rgba(124,58,237,0.1); color:#7c3aed;
+                                       border:1.5px solid rgba(124,58,237,0.3); border-radius:10px;
+                                       font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap;
+                                       display:flex; align-items:center; gap:6px; transition:all 0.2s;"
+                                title="Generar PDF de lista de facturas del mes para control en papel">
+                            📋 Lista Mensual PDF
+                        </button>
                     </div>
 
                     <input id="buscador-global" type="text"
@@ -1024,11 +1032,6 @@
                     <div id="contenedor-informes-creados"></div>
                 </div>
             </div>
-
-            <!-- ══ PRESUPUESTAR (Asesor de Reparaciones) ══ -->
-            <!-- div ESTÁTICO — inf-reparaciones.js lo puebla al hacer click en Presupuestar -->
-            <div id="_rep-root" style="display:none;"></div>
-
         </div>
 
         <div id="status-informe"></div>

@@ -1298,3 +1298,276 @@ async function confirmarSincronizacionARCA() {
 }
 
 function setSectorAbono(sec) { sectorAbonoActual = sec; renderizarAbonos(); }
+// ════════════════════════════════════════════════════════════════
+//  📋 PDF LISTA MENSUAL — Control de facturas en papel
+//  Genera un PDF A4 vertical con todas las facturas del rango seleccionado.
+//  Incluye columnas: N°, Cliente, CUIT, Factura, Monto, Fecha, Estado (checkbox).
+// ════════════════════════════════════════════════════════════════
+
+// Modal de configuración antes de generar
+function generarPDFListaMensual() {
+    // Crear o abrir el modal de configuración
+    let modal = document.getElementById('_modal-lista-pdf');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = '_modal-lista-pdf';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+
+        // Calcular rango por defecto: mes actual
+        const hoy = new Date();
+        const y = hoy.getFullYear(), m = String(hoy.getMonth()+1).padStart(2,'0');
+        const primerDia = `${y}-${m}-01`;
+        const ultimoDia = new Date(y, hoy.getMonth()+1, 0);
+        const lastStr   = `${y}-${m}-${String(ultimoDia.getDate()).padStart(2,'0')}`;
+
+        modal.innerHTML = `
+        <div style="background:var(--inf-card,#1a1f2e);border-radius:18px;width:100%;max-width:440px;
+                    border:1px solid rgba(255,255,255,0.1);padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="font-size:18px;font-weight:900;color:var(--inf-text,#e2e8f0);margin-bottom:6px;">📋 Lista Mensual PDF</div>
+            <div style="font-size:12px;color:var(--inf-sub,#94a3b8);margin-bottom:20px;">Control de facturas para revisar en papel</div>
+
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">RANGO DE FECHAS</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+                <div>
+                    <div style="font-size:10px;color:var(--inf-muted,#6b7db3);margin-bottom:4px;">Desde</div>
+                    <input type="date" id="_lpdf-desde" value="${primerDia}"
+                        style="width:100%;padding:10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);
+                               background:rgba(255,255,255,0.06);color:var(--inf-text,#e2e8f0);font-size:13px;box-sizing:border-box;">
+                </div>
+                <div>
+                    <div style="font-size:10px;color:var(--inf-muted,#6b7db3);margin-bottom:4px;">Hasta</div>
+                    <input type="date" id="_lpdf-hasta" value="${lastStr}"
+                        style="width:100%;padding:10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);
+                               background:rgba(255,255,255,0.06);color:var(--inf-text,#e2e8f0);font-size:13px;box-sizing:border-box;">
+                </div>
+            </div>
+
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">FILTRAR POR TIPO</label>
+            <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+                ${[['todos','Todos','#1a73e8'],['abono','Abonos','#60a5fa'],['reparacion','Reparaciones','#4ade80'],['sin_desc','Sin Descripción','#fb923c']].map(([v,l,c]) =>
+                    `<button data-tipo="${v}" onclick="_lpdfSetTipo(this,'${v}')"
+                        style="padding:6px 12px;border-radius:8px;border:1.5px solid ${c};
+                               background:${v==='todos'?c:'transparent'};color:${v==='todos'?'white':c};
+                               font-size:12px;font-weight:700;cursor:pointer;">
+                        ${l}
+                    </button>`
+                ).join('')}
+            </div>
+
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">COLUMNAS DE ESTADO (en papel)</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+                ${[['Pagado','#22c55e'],['Adeuda','#f87171'],['Reclamo','#fb923c']].map(([l,c]) =>
+                    `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--inf-text,#e2e8f0);cursor:pointer;">
+                        <input type="checkbox" id="_lpdf-col-${l.toLowerCase()}" checked
+                            style="accent-color:${c};width:15px;height:15px;"> ${l}
+                    </label>`
+                ).join('')}
+            </div>
+
+            <div id="_lpdf-preview" style="font-size:12px;color:var(--inf-muted,#94a3b8);margin-bottom:18px;padding:8px 12px;
+                background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+                Calculando...
+            </div>
+
+            <div style="display:flex;gap:10px;">
+                <button onclick="document.getElementById('_modal-lista-pdf').remove()"
+                    style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);
+                           background:rgba(255,255,255,0.04);color:var(--inf-sub,#94a3b8);font-weight:700;cursor:pointer;">
+                    Cancelar
+                </button>
+                <button onclick="_generarListaPDFEjecutar()"
+                    style="flex:1;padding:12px;border-radius:10px;border:none;font-weight:900;cursor:pointer;
+                           background:linear-gradient(135deg,#7c3aed,#4c1d95);color:white;font-size:14px;">
+                    📄 Generar PDF
+                </button>
+            </div>
+        </div>`;
+
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+    }
+
+    window._lpdfTipoActual = 'todos';
+    _lpdfActualizarPreview();
+
+    // Recalcular al cambiar fecha
+    ['_lpdf-desde','_lpdf-hasta'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', _lpdfActualizarPreview);
+    });
+}
+
+window._lpdfTipoActual = 'todos';
+
+function _lpdfSetTipo(btn, tipo) {
+    window._lpdfTipoActual = tipo;
+    document.querySelectorAll('[data-tipo]').forEach(function(b) {
+        const t = b.dataset.tipo;
+        const colors = {todos:'#1a73e8',abono:'#60a5fa',reparacion:'#4ade80',sin_desc:'#fb923c'};
+        const c = colors[t] || '#1a73e8';
+        b.style.background = t === tipo ? c : 'transparent';
+        b.style.color      = t === tipo ? 'white' : c;
+    });
+    _lpdfActualizarPreview();
+}
+
+function _lpdfFiltrarDocs() {
+    const desde = document.getElementById('_lpdf-desde')?.value;
+    const hasta = document.getElementById('_lpdf-hasta')?.value;
+    const tipo  = window._lpdfTipoActual || 'todos';
+    if (!Array.isArray(documentosGuardados) || !documentosGuardados.length) return [];
+
+    return documentosGuardados.filter(function(doc) {
+        const f  = (doc.fechaLimpia || doc.fecha || '').split('/');
+        let fecha;
+        if (f.length === 3) fecha = `${f[2]}-${f[1]}-${f[0]}`;
+        else fecha = String(doc.fecha || '').slice(0,10);
+        if (desde && fecha < desde) return false;
+        if (hasta && fecha > hasta) return false;
+        if (tipo !== 'todos' && doc._tipo !== tipo) return false;
+        return true;
+    }).sort(function(a, b) {
+        const fa = (a.fechaLimpia || '').split('/').reverse().join('');
+        const fb = (b.fechaLimpia || '').split('/').reverse().join('');
+        return fa.localeCompare(fb);
+    });
+}
+
+function _lpdfActualizarPreview() {
+    const docs = _lpdfFiltrarDocs();
+    const el   = document.getElementById('_lpdf-preview');
+    if (el) {
+        const total = docs.reduce(function(s, d) { return s + Number(d.total || 0); }, 0);
+        el.innerHTML = `<strong>${docs.length} facturas</strong> en el rango · Total: <strong style="color:#60a5fa;">$${Math.round(total).toLocaleString('es-AR')}</strong>`;
+    }
+}
+
+async function _generarListaPDFEjecutar() {
+    const docs  = _lpdfFiltrarDocs();
+    if (!docs.length) { mostrarMensaje('No hay documentos en el rango seleccionado.', 'error'); return; }
+
+    const desde = document.getElementById('_lpdf-desde')?.value || '';
+    const hasta = document.getElementById('_lpdf-hasta')?.value || '';
+    const colPagado   = document.getElementById('_lpdf-col-pagado')?.checked;
+    const colAdeuda   = document.getElementById('_lpdf-col-adeuda')?.checked;
+    const colReclamo  = document.getElementById('_lpdf-col-reclamo')?.checked;
+    document.getElementById('_modal-lista-pdf')?.remove();
+
+    mostrarMensaje('⏳ Generando PDF lista...', 'cargando');
+
+    // Construir HTML del PDF
+    const columnas = [colPagado && 'Pagado', colAdeuda && 'Adeuda', colReclamo && 'Reclamo'].filter(Boolean);
+    const totalGeneral = docs.reduce(function(s, d) { return s + Number(d.total || 0); }, 0);
+    const tituloRango  = desde && hasta
+        ? `${desde.split('-').reverse().join('/')} al ${hasta.split('-').reverse().join('/')}`
+        : 'Todos los registros';
+
+    const headerCols = columnas.map(function(c) {
+        return `<th style="width:60px;text-align:center;">${c} <span style="font-size:9px;font-weight:400;">(✓/✗)</span></th>`;
+    }).join('');
+
+    const filas = docs.map(function(doc, i) {
+        const bgRow    = i % 2 === 0 ? '#ffffff' : '#f8f9fc';
+        const factNum  = String(doc.numFactura || '—');
+        const tipoBadge = doc._tipo === 'abono' ? '#1d4ed8' : doc._tipo === 'reparacion' ? '#15803d' : '#92400e';
+        const tipoLabel = doc._tipo === 'abono' ? 'Abono' : doc._tipo === 'reparacion' ? 'Rep.' : '?';
+        const checkCols = columnas.map(function() {
+            return `<td style="text-align:center;border-bottom:1px solid #e5e7eb;padding:7px 4px;">
+                        <div style="width:16px;height:16px;border:1.5px solid #9ca3af;border-radius:3px;margin:0 auto;"></div>
+                    </td>`;
+        }).join('');
+
+        return `<tr style="background:${bgRow};">
+            <td style="padding:7px 8px;font-size:10px;color:#6b7280;border-bottom:1px solid #e5e7eb;text-align:center;">${i+1}</td>
+            <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">
+                <div style="font-size:11px;font-weight:700;color:#111827;">${doc.cliente || '—'}</div>
+                <div style="font-size:9px;color:#6b7280;">${doc.cuit || ''}</div>
+            </td>
+            <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">
+                <span style="display:inline-block;background:${tipoBadge}1a;color:${tipoBadge};border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;">${tipoLabel}</span>
+            </td>
+            <td style="padding:7px 8px;font-size:11px;font-weight:700;color:#1e3a8a;border-bottom:1px solid #e5e7eb;">${factNum}</td>
+            <td style="padding:7px 8px;font-size:12px;font-weight:900;color:#1d4ed8;text-align:right;border-bottom:1px solid #e5e7eb;">
+                $${Number(doc.total || 0).toLocaleString('es-AR')}
+            </td>
+            <td style="padding:7px 8px;font-size:10px;color:#374151;text-align:center;border-bottom:1px solid #e5e7eb;">${doc.fechaLimpia || ''}</td>
+            ${checkCols}
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <style>
+        @page { size: A4 portrait; margin: 15mm 12mm; }
+        body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1f2937; margin:0; }
+        table { width: 100%; border-collapse: collapse; }
+        thead tr { background: #1e40af; color: white; }
+        thead th { padding: 9px 8px; font-size: 10px; font-weight: 700; text-align: left; }
+        .firma-box { border: 1.5px solid #d1d5db; border-radius: 6px; padding: 6px 10px; text-align: center; background: #f9fafb; }
+        .total-row td { font-weight: 900; background: #eff6ff !important; color: #1e3a8a; }
+    </style>
+    </head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1e40af;">
+        <div>
+            <div style="font-size:20px;font-weight:900;color:#1e40af;">Support Fitness</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">Servicio Técnico para Gimnasios</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-size:14px;font-weight:800;color:#111827;">📋 Control de Facturación</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:3px;">${tituloRango}</div>
+            <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Generado: ${new Date().toLocaleDateString('es-AR')}</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:28px;text-align:center;">#</th>
+                <th>Cliente / CUIT</th>
+                <th style="width:45px;">Tipo</th>
+                <th style="width:80px;">Factura</th>
+                <th style="width:85px;text-align:right;">Monto</th>
+                <th style="width:62px;text-align:center;">Fecha</th>
+                ${headerCols}
+            </tr>
+        </thead>
+        <tbody>
+            ${filas}
+            <tr class="total-row">
+                <td colspan="4" style="padding:9px 8px;text-align:right;font-size:11px;border-top:2px solid #1e40af;">
+                    TOTAL — ${docs.length} facturas
+                </td>
+                <td style="padding:9px 8px;font-size:14px;font-weight:900;text-align:right;color:#1e3a8a;border-top:2px solid #1e40af;">
+                    $${Math.round(totalGeneral).toLocaleString('es-AR')}
+                </td>
+                <td colspan="${columnas.length + 1}" style="border-top:2px solid #1e40af;"></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        ${['Revisado por','Aprobado por','Fecha de revisión'].map(function(l) {
+            return `<div class="firma-box"><div style="font-size:9px;color:#6b7280;margin-bottom:24px;">${l}</div><div style="border-top:1px solid #9ca3af;padding-top:4px;font-size:9px;color:#d1d5db;">Firma / Aclaración</div></div>`;
+        }).join('')}
+    </div>
+    </body></html>`;
+
+    // Generar PDF desde HTML
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const win  = window.open(url, '_blank');
+    if (win) {
+        win.onload = function() {
+            setTimeout(function() { win.print(); URL.revokeObjectURL(url); }, 600);
+        };
+    } else {
+        // Fallback: descarga directa del HTML
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Lista_Facturacion_${desde}_${hasta}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+    }
+    mostrarMensaje(`✅ Lista generada — ${docs.length} facturas · $${Math.round(totalGeneral).toLocaleString('es-AR')}`, 'exito');
+}
