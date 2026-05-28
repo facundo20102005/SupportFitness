@@ -8,7 +8,7 @@
 
 // IMPORTANTE: Cambiar este string cada vez que se suban cambios a producción.
 // Formato: 'sf-YYYYMMDD-HHMM' — evita que los usuarios vean versión vieja cacheada.
-const CACHE_VER  = 'sf-20260528-0136';
+const CACHE_VER  = 'sf-20260528-0200';
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
 // Assets que se intentan precargar al instalar el SW.
@@ -25,6 +25,7 @@ const PRECACHE = [
     '/Informes/inf-ui.js',
     '/Informes/inf-docs.js',
     '/Informes/inf-abonos.js',
+    '/Informes/inf-reparaciones.js',
     '/Jefatura/index.html',
     '/Jefatura/jefatura.js',
     '/assets/Logoparapdf.png',
@@ -81,6 +82,8 @@ self.addEventListener('message', event => {
 
 // ── FETCH: estrategia por tipo de recurso ────────────────────────
 self.addEventListener('fetch', event => {
+    // Ignorar esquemas no-http (chrome-extension://, etc.) — causarían TypeError en cache.put()
+    if (!event.request.url.startsWith('http')) return;
     const url = new URL(event.request.url);
 
     // 1. Llamadas a Google Apps Script → Network-Only (siempre datos frescos)
