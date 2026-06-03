@@ -171,26 +171,34 @@ function _renderCalc() {
         const terms   = (esCable && item.terminales !== null && item.terminales !== undefined) ? item.terminales : 0;
         let tot;
         if (esCable && item.precioBaseUSD > 0) {
-            // Fórmula exacta: (m × $/m_usd + t × 10usd) × dólar × cant
             const totalUSD = (metros * item.precioBaseUSD) + (terms * PRECIO_TERMINAL_USD);
             tot = Math.round(totalUSD * dolarActual) * item.cant;
         } else if (esCable) {
-            // precioARS = $/metro; recalcular incluyendo terminales
             tot = Math.round((item.precioARS * metros + PRECIO_TERMINAL_USD * dolarActual * terms) * item.cant);
         } else {
             tot = item.precioARS * item.cant;
         }
         subtotal += tot;
-        const termVal = esCable ? (item.terminales !== null && item.terminales !== undefined ? item.terminales : 2) : 0;
+        const termVal   = esCable ? (item.terminales !== null && item.terminales !== undefined ? item.terminales : 2) : 0;
+        const precioUnit = esCable ? 0 : item.precioARS;  // cable usa fórmula distinta
+        const ivaUnit    = !esCable && item.cant > 1 ? Math.round(precioUnit * 0.21) : 0;
+        const totConIVA  = tot + Math.round(tot * 0.21);
+
         return '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">'
             + '<div style="display:flex;align-items:center;gap:6px;">'
             + '<button onclick="_calcQuitarItem(' + idx + ')" style="background:none;border:none;color:' + _COL.red + ';cursor:pointer;font-size:14px;padding:0 2px;flex-shrink:0;">✖</button>'
             + '<div style="flex:1;font-size:12px;font-weight:700;color:' + _COL.text + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + item.nombre + '</div>'
-            + '<div style="font-size:13px;font-weight:900;color:#34d399;flex-shrink:0;">' + _fmtARS(tot) + '</div>'
+            + '<div style="text-align:right;flex-shrink:0;">'
+            + '<div style="font-size:13px;font-weight:900;color:#34d399;">' + _fmtARS(tot) + '</div>'
+            + (item.cant > 1 && !esCable ? '<div style="font-size:9px;color:' + _COL.muted + ';">c/u: ' + _fmtARS(precioUnit) + '</div>' : '')
+            + '</div>'
             + '</div>'
             + '<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:5px;padding-left:20px;">'
             + '<span style="font-size:10px;color:' + _COL.muted + ';">Cant:</span>'
             + '<input type="number" min="1" value="' + item.cant + '" oninput="_calcEditarCant(' + idx + ',this.value)" style="width:46px;padding:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:' + _COL.text + ';font-size:12px;text-align:center;">'
+            // Precio editable (solo para no-cables):
+            + (!esCable ? '<span style="font-size:10px;color:' + _COL.muted + ';">$:</span>'
+                + '<input type="number" min="0" step="1000" value="' + precioUnit + '" oninput="_calcEditarPrecio(' + idx + ',this.value)" style="width:80px;padding:3px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24;font-size:12px;text-align:right;" title="Precio editable">' : '')
             + (esCable ? '<span style="font-size:10px;color:' + _COL.accent + ';">📏m:</span>'
                        + '<input type="number" min="0.5" step="0.5" value="' + metros + '" oninput="_calcEditarMetros(' + idx + ',this.value)" style="width:50px;padding:3px;border-radius:6px;border:1px solid rgba(96,165,250,0.3);background:rgba(96,165,250,0.07);color:' + _COL.accent + ';font-size:12px;text-align:center;">'
                        + '<span style="font-size:10px;color:' + _COL.accent + ';">🔩t:</span>'
@@ -200,6 +208,9 @@ function _renderCalc() {
             + (esCable ? '<div style="font-size:10px;color:' + _COL.accent + ';margin-top:2px;padding-left:20px;">📏 ' + metros + 'm'
                 + (item.precioBaseUSD > 0 ? ' × U$D' + item.precioBaseUSD + '/m' : ' × ' + _fmtARS(item.precioARS) + '/m')
                 + (termVal > 0 ? ' · 🔩 ' + termVal + ' term. × U$D' + PRECIO_TERMINAL_USD : '')
+                + '</div>' : '')
+            + (item.cant > 1 && !esCable ? '<div style="font-size:10px;color:rgba(52,211,153,0.7);margin-top:2px;padding-left:20px;">'
+                + item.cant + ' u. × ' + _fmtARS(precioUnit) + ' = ' + _fmtARS(tot) + ' s/IVA · ' + _fmtARS(totConIVA) + ' c/IVA'
                 + '</div>' : '')
             + '</div>';
     }).join('');
@@ -317,11 +328,53 @@ function _abrirModalFactura(visita, prefillTipo, prefillNum) {
             for (const [c, g] of Object.entries(dic)) {
                 if (_matchGym(g)) { cuit = c; break; }
             }
+            // También buscar por CUIT normalizado si la visita lo trae
+            if (!cuit && visita.cuit) {
+                const vn = _normCuit(visita.cuit);
+                for (const c of Object.keys(dic)) {
+                    if (_normCuit(c) === vn) { cuit = c; break; }
+                }
+            }
         } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     }
     if (!cuit && _repVisitas && _repVisitas.length) {
         const match = _repVisitas.find(function(v) { return _matchGym(v.gym) && v.cuit; });
         if (match) cuit = match.cuit;
+    }
+    // Fuente extra: buscar en Presupuestos_Emitidos (ARCA) por nombre del gym
+    if (!cuit) {
+        try {
+            const arca = JSON.parse(sessionStorage.getItem('_arca_cuit_cache') || '{}');
+            const gymKey = gymNorm.slice(0, 15);
+            if (arca[gymKey]) cuit = arca[gymKey];
+        } catch(e) {}
+        // Lanzar búsqueda async para enriquecer el cache para la próxima vez
+        (async function() {
+            try {
+                const docs = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, 8000);
+                if (!Array.isArray(docs)) return;
+                const cache = {};
+                docs.forEach(function(d) {
+                    const rawGym = d.gimnasio || d.gym || d.cliente || '';
+                    const dn = rawGym.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+                    const dc = String(d.cuit || d.CUIT || '').replace(/\D/g, '');
+                    if (dn && dc) cache[dn.slice(0, 15)] = dc;
+                });
+                sessionStorage.setItem('_arca_cuit_cache', JSON.stringify(cache));
+                // Si encontramos el CUIT ahora, actualizar el input
+                const gymKey2 = gymNorm.slice(0, 15);
+                if (cache[gymKey2]) {
+                    const fCuit = document.getElementById('_fCuit');
+                    if (fCuit && !fCuit.value) {
+                        fCuit.value = cache[gymKey2];
+                        fCuit.style.borderColor = 'rgba(110,231,183,0.3)';
+                        fCuit.style.background  = 'rgba(110,231,183,0.06)';
+                        const lbl = fCuit.previousElementSibling;
+                        if (lbl) { lbl.textContent = '✅ CUIT — encontrado en ARCA'; lbl.style.color = '#6ee7b7'; }
+                    }
+                }
+            } catch(e) {}
+        })();
     }
 
     const tipoInicial = prefillTipo || 'B';
@@ -393,7 +446,13 @@ async function _buscarMatchARCA(gym) {
             return fb.localeCompare(fa);
         }).slice(0, 3);
         if (!matches.length) {
-            badge.innerHTML = '<span style="color:#fb923c;">⚠️ Sin coincidencias en ARCA para este cliente.</span>';
+            // FIX: si el CUIT ya está completo, el cliente está reconocido — no mostrar falsa alarma
+            const cuitActual = (document.getElementById('_fCuit')?.value || '').replace(/\D/g, '');
+            if (cuitActual && cuitActual.length >= 10) {
+                badge.innerHTML = '<span style="color:#6ee7b7;">✅ CUIT verificado — sin facturas previas en ARCA</span>';
+            } else {
+                badge.innerHTML = '<span style="color:#fb923c;">⚠️ Sin historial en ARCA — ingresá el CUIT manualmente si falta.</span>';
+            }
         } else {
             const last = matches[0];
             const gymShow = last.gimnasio || last.gym || last.cliente || gym;
@@ -680,6 +739,75 @@ function _buildCard(visita, repIdx) {
             </div>
             <div style="padding:10px 14px 5px;">${motivoH}</div>
             ${cantH ? `<div style="padding:3px 14px 8px;display:flex;flex-wrap:wrap;gap:4px;">${cantH}</div>` : ''}
+            ${(function(foto) {
+                if (!foto) return '';
+                // Extraer ID de Drive si el valor es un link
+                const idMatch = foto.match(/(?:\/d\/|id=)([-\w]{25,})/);
+                const previewSrc = idMatch ? 'https://drive.google.com/file/d/' + idMatch[1] + '/preview' : null;
+                const driveLink  = idMatch ? 'https://drive.google.com/file/d/' + idMatch[1] + '/view' : null;
+                // Si no hay ID de Drive, mostrar solo el link si empieza con http
+                if (!previewSrc) {
+                    if (!foto.startsWith('http')) return '';
+                    return `<details style="padding:0 14px 8px;">
+                <summary style="cursor:pointer;font-size:11px;font-weight:800;color:#60a5fa;padding:5px 0;user-select:none;list-style:none;">
+                    ▶ 📷 Foto del remito
+                </summary>
+                <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
+                    <div style="display:flex;gap:8px;">
+                        <a href="${foto}" target="_blank" rel="noopener"
+                           style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;
+                                  border-radius:10px;border:1px solid rgba(96,165,250,0.3);
+                                  background:rgba(96,165,250,0.07);color:#60a5fa;font-size:12px;font-weight:800;text-decoration:none;"
+                           onmouseover="this.style.background='rgba(96,165,250,0.15)'"
+                           onmouseout="this.style.background='rgba(96,165,250,0.07)'">
+                            🖼️ Ver foto en Drive
+                        </a>
+                        ${visita.linkCarpeta ? `<a href="${visita.linkCarpeta}" target="_blank" rel="noopener"
+                           style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;
+                                  border-radius:10px;border:1px solid rgba(167,139,250,0.3);
+                                  background:rgba(167,139,250,0.07);color:#a78bfa;font-size:12px;font-weight:800;text-decoration:none;"
+                           onmouseover="this.style.background='rgba(167,139,250,0.15)'"
+                           onmouseout="this.style.background='rgba(167,139,250,0.07)'">
+                            📁 Ver todas las fotos
+                        </a>` : ''}
+                    </div>
+                </div>
+            </details>`;
+                }
+                return `<details style="padding:0 14px 8px;">
+                <summary style="cursor:pointer;font-size:11px;font-weight:800;color:#60a5fa;padding:5px 0;user-select:none;list-style:none;">
+                    ▶ 📷 Vista previa del remito — clic para ver
+                </summary>
+                <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
+                    <div style="position:relative;width:100%;height:260px;border-radius:10px;overflow:hidden;background:#0d1117;border:1px solid rgba(96,165,250,0.15);">
+                        <iframe src="${previewSrc}"
+                            style="width:100%;height:100%;border:none;"
+                            allow="autoplay" loading="lazy">
+                        </iframe>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        <a href="${driveLink}" target="_blank" rel="noopener"
+                           style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+                                  padding:9px 14px;border-radius:10px;border:1px solid rgba(96,165,250,0.3);
+                                  background:rgba(96,165,250,0.07);color:#60a5fa;font-size:12px;font-weight:800;
+                                  text-decoration:none;"
+                           onmouseover="this.style.background='rgba(96,165,250,0.15)'"
+                           onmouseout="this.style.background='rgba(96,165,250,0.07)'">
+                            🖼️ Ver foto completa
+                        </a>
+                        ${visita.linkCarpeta ? `<a href="${visita.linkCarpeta}" target="_blank" rel="noopener"
+                           style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+                                  padding:9px 14px;border-radius:10px;border:1px solid rgba(167,139,250,0.3);
+                                  background:rgba(167,139,250,0.07);color:#a78bfa;font-size:12px;font-weight:800;
+                                  text-decoration:none;"
+                           onmouseover="this.style.background='rgba(167,139,250,0.15)'"
+                           onmouseout="this.style.background='rgba(167,139,250,0.07)'">
+                            📁 Ver todas las fotos
+                        </a>` : ''}
+                    </div>
+                </div>
+            </details>`;
+            })(visita.foto)}
             <details style="padding:0 14px 10px;">
                 <summary style="cursor:pointer;font-size:11px;font-weight:800;color:${_COL.accent};padding:6px 0;user-select:none;list-style:none;">
                     ▶ 💡 Sugerencias (${sugs.length} ítems) — clic para ver
@@ -727,7 +855,7 @@ async function _cambiarEstadoRep(idx, nuevoEstado) {
         return;
     }
     visita.facturado = nuevoEstado;
-    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: visita.gym, fecha: visita.fechaStr, estado: nuevoEstado } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
+    try { await llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: visita.gym, fecha: visita.fechaStr, estado: nuevoEstado, remito: visita.remito || '' } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     if (nuevoEstado === 'presupuestado' || nuevoEstado === 'enviado') {
         try { await llamarAPI({ accion: "guardarPresupuestoEmitido", payload: { cliente: visita.gym, factura: '', periodo: visita.fechaStr, total: 0, correo: '', remito: visita.remito || '' } }, SF_TIMEOUT?.NORMAL || 15000); } catch(e) { console.warn("[inf-rep] Error:", e?.message || e); }
     }
