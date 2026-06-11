@@ -1,12 +1,9 @@
 // ── inf-api.js — Comunicación con el servidor y carga inicial ──
 // AUDITORÍA: corregido timeout, manejo de errores, sesión básica
 
-// ── API_URL — Fallback por si inf-config.js no cargó ───────────────
-// inf-api.js puede ser cargado desde páginas que no tienen inf-config.js
-// (ej: Jefatura/index.html). Esta línea garantiza que API_URL esté siempre
-// definida, sin pisar la que ya existe si fue seteada por inf-config.js.
+// ── inf-api.js — Comunicación con el servidor y carga inicial ──
+
 if (typeof API_URL === 'undefined') {
-    // eslint-disable-next-line no-unused-vars
     var API_URL = (typeof SF_API_URL !== 'undefined')
         ? SF_API_URL
         : (typeof window !== 'undefined' && window.API_URL)
@@ -188,47 +185,45 @@ function cambioMesPersonalizado() {
     }
 }
 
-// ── Llamada a la API con timeout y retry ─────────────────────────
-// FIX PRINCIPAL: agregado AbortController con timeout de 15 segundos.
-// Si Google Apps Script tarda más de 15s, se aborta limpiamente con
-// un mensaje de error claro en lugar de quedar colgado indefinidamente.
+
 async function llamarAPI(accionObj, timeoutMs = 15000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    if (typeof API_URL === 'undefined' || !API_URL) {
+        throw new Error("Falta API_URL");
+    }
 
-    try {
-        const response = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(accionObj),
-            redirect: "follow",
-            signal: controller.signal
-        });
+    const maxIntentos = 3; 
+    
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-        clearTimeout(timer);
+        try {
+            // Conexión POST limpia compatible con las políticas CORS de Google Apps Script
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(accionObj),
+                signal: controller.signal
+            });
 
-        if (!response.ok) {
-            throw new Error(`El servidor respondió con error ${response.status}. Intentá de nuevo en unos segundos.`);
+            clearTimeout(timer);
+
+            if (!response.ok) throw new Error("Error HTTP " + response.status);
+
+            const result = await response.json();
+            if (result.status === "success") return result.data;
+
+            throw new Error(result.message || "Error interno del servidor Google.");
+
+        } catch (error) {
+            clearTimeout(timer);
+            
+            if (intento === maxIntentos) {
+                throw new Error("No se pudo establecer conexión fluida con el servidor.");
+            }
+            
+            // Reintento silencioso cada 1.5 segundos
+            await new Promise(resolve => setTimeout(resolve, 1500));
         }
-
-        const result = await response.json();
-
-        if (result.status === "success") return result.data;
-
-        const msg = result.message || "Error desconocido del servidor.";
-        throw new Error(msg.includes("Exception")
-            ? "Error interno del servidor. Contactá al administrador."
-            : msg);
-
-    } catch (error) {
-        clearTimeout(timer);
-
-        if (error.name === 'AbortError') {
-            throw new Error("La solicitud tardó demasiado (más de 15s). Verificá tu conexión e intentá de nuevo.");
-        }
-        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError") || error.message.includes("ERR_")) {
-            throw new Error("Sin conexión. Verificá tu internet e intentá de nuevo.");
-        }
-        throw error;
     }
 }

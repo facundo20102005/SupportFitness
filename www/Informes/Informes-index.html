@@ -18,12 +18,12 @@
         El parámetro no altera el contenido del archivo, solo invalida la caché.
         Versión actual: v7 (19/05/2025)
     -->
-    <script src="inf-config.js?v=7"></script>    <!-- Constantes, API_URL, precios   -->
-    <script src="inf-api.js?v=7"></script>        <!-- llamarAPI, auth, obtenerDolar   -->
-    <script src="inf-ui.js?v=7"></script>         <!-- setModoApp, burbuja, cargarApp  -->
-    <script src="inf-docs.js?v=7"></script>       <!-- docs, items, PDF, modales       -->
-    <script src="inf-abonos.js?v=7" defer></script> <!-- abonos mensuales            -->
-    <script src="inf-reparaciones.js?v=7" defer></script> <!-- asesor de reparaciones    -->
+    <script src="inf-config.js?v=10"></script>    <!-- Constantes, API_URL, precios   -->
+    <script src="inf-api.js?v=10"></script>        <!-- llamarAPI, auth, obtenerDolar   -->
+    <script src="inf-ui.js?v=10"></script>         <!-- setModoApp, burbuja, cargarApp  -->
+    <script src="inf-docs.js?v=10"></script>       <!-- docs, items, PDF, modales       -->
+    <script src="inf-abonos.js?v=10" defer></script> <!-- abonos mensuales            -->
+    <script src="inf-reparaciones.js?v=10" defer></script> <!-- asesor de reparaciones    -->
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -958,6 +958,17 @@
                     💾 Guardar Documento
                 </button>
 
+                <!-- FIX 3: Botón Vincular ARCA desde Presupuestar -->
+                <button id="btn-vincular-arca-presup" onclick="vincularARCADesdePresupuestar()"
+                        style="width:100%; margin-top:8px; padding:13px; font-size:14px; font-weight:900;
+                               background:rgba(139,92,246,0.12); color:#a78bfa;
+                               border:1.5px solid rgba(139,92,246,0.35); border-radius:12px;
+                               cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+                               transition:all 0.2s;"
+                        title="Sincroniza facturas ARCA con los presupuestos para marcar cuáles ya están facturados">
+                    🔗 Vincular ARCA — marcar facturas en presupuestos
+                </button>
+
                 <!-- Acceso rápido post-guardado -->
                 <div id="acceso-rapido-pdf" style="display:none; margin-top:10px; padding:14px; background:var(--inf-verde-lt);
                      border-radius:12px; border:1px solid rgba(15,157,88,0.3); animation:scaleIn 0.3s ease;">
@@ -1000,6 +1011,15 @@
                             <h2 style="font-size:17px; font-weight:900; color:var(--inf-azul); margin:0;" id="titulo-guardados">📁 Documentos Guardados</h2>
                             <p style="font-size:13px; color:var(--inf-sub); margin:0;" id="desc-guardados">Facturas y presupuestos en la nube.</p>
                         </div>
+                        <!-- FIX 4: Botón AUDITORÍA -->
+                        <button onclick="abrirAuditoria()"
+                                style="padding:8px 14px; background:rgba(239,68,68,0.1); color:#f87171;
+                                       border:1.5px solid rgba(239,68,68,0.3); border-radius:10px;
+                                       font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap;
+                                       display:flex; align-items:center; gap:6px; transition:all 0.2s;"
+                                title="Ver facturas con errores o inconsistencias en el algoritmo">
+                            🔍 Auditoría
+                        </button>
                         <button onclick="verHistorialPDFs()"
                                 style="padding:8px 14px; background:rgba(26,115,232,0.1); color:var(--inf-azul);
                                        border:1.5px solid rgba(26,115,232,0.3); border-radius:10px;

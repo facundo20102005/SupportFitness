@@ -160,7 +160,7 @@ function _renderCalc() {
     const dolarActual = (typeof valorDolarOficial !== 'undefined' && valorDolarOficial > 100) ? valorDolarOficial : 1000;
     const dolarEl = document.getElementById('_rep-calc-dolar');
     if (dolarEl) {
-        dolarEl.textContent = '\u{1F4B1} USD = $' + Math.round(dolarActual).toLocaleString('es-AR')
+        dolarEl.textContent = 'USD = $' + Math.round(dolarActual).toLocaleString('es-AR')
             + (dolarActual === 1000 ? ' (estimado)' : ' (oficial)');
         dolarEl.style.color = dolarActual === 1000 ? _COL.orange : _COL.green;
     }
@@ -301,10 +301,6 @@ function _abrirModalFactura(visita, prefillTipo, prefillNum) {
     const esEdicion = !!prefillNum;
 
     // ── Auto-fill CUIT: buscar en múltiples fuentes ─────────────────────
-    // 1. CUIT directo en el registro de la visita (si el backend lo devuelve)
-    // 2. listaAbonosBase (clientes con abono activo)
-    // 3. cuitGlobalDic en localStorage (diccionario acumulado por inf-api.js)
-    // 4. Historial de visitas en memoria (_repVisitas) que ya tengan CUIT
     let cuit = visita.cuit || '';
 
     const gymNorm = gym.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, '');
@@ -328,7 +324,6 @@ function _abrirModalFactura(visita, prefillTipo, prefillNum) {
             for (const [c, g] of Object.entries(dic)) {
                 if (_matchGym(g)) { cuit = c; break; }
             }
-            // También buscar por CUIT normalizado si la visita lo trae
             if (!cuit && visita.cuit) {
                 const vn = _normCuit(visita.cuit);
                 for (const c of Object.keys(dic)) {
@@ -341,14 +336,12 @@ function _abrirModalFactura(visita, prefillTipo, prefillNum) {
         const match = _repVisitas.find(function(v) { return _matchGym(v.gym) && v.cuit; });
         if (match) cuit = match.cuit;
     }
-    // Fuente extra: buscar en Presupuestos_Emitidos (ARCA) por nombre del gym
     if (!cuit) {
         try {
             const arca = JSON.parse(sessionStorage.getItem('_arca_cuit_cache') || '{}');
             const gymKey = gymNorm.slice(0, 15);
             if (arca[gymKey]) cuit = arca[gymKey];
         } catch(e) {}
-        // Lanzar búsqueda async para enriquecer el cache para la próxima vez
         (async function() {
             try {
                 const docs = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, 8000);
@@ -361,7 +354,6 @@ function _abrirModalFactura(visita, prefillTipo, prefillNum) {
                     if (dn && dc) cache[dn.slice(0, 15)] = dc;
                 });
                 sessionStorage.setItem('_arca_cuit_cache', JSON.stringify(cache));
-                // Si encontramos el CUIT ahora, actualizar el input
                 const gymKey2 = gymNorm.slice(0, 15);
                 if (cache[gymKey2]) {
                     const fCuit = document.getElementById('_fCuit');
@@ -648,7 +640,7 @@ function _buildCard(visita, repIdx) {
             ? `U$D ${s.info.precio} → ${_fmtARS(s.precioARS)}`
             : _fmtARS(s.precioARS);
         // Onclick sin concatenación — usa data-* y un listener centralizado
-        const onclickFn = `_agregarSugerencia('${idC}','${esCable ? idM : ''}','${esCable ? idT : ''}','${s.nombre.replace(/'/g,"\\'")}',${s.precioARS},'${visita.gym.replace(/'/g,"\\'")}',${s.info.precio || 0})`;
+        const onclickFn = `_agregarSugerencia('${idC}','${esCable ? idM : ''}','${esCable ? idT : ''}','${s.nombre.replace(/'/g,"\'")}',${s.precioARS},'${visita.gym.replace(/'/g,"\'")}',${s.info.precio || 0})`;
         const inputCable = esCable ? `
             <span style="font-size:10px;color:${_COL.accent};">📏m:</span>
             <input type="number" min="0.5" step="0.5" value="${cants.metros || 1}" id="${idM}"
@@ -686,6 +678,9 @@ function _buildCard(visita, repIdx) {
         ? visita.facturado : '';
     const colorFact = esPagado ? '#86efac' : '#6ee7b7';
 
+    // NUEVO: Detectar si viene de un presupuesto previo
+    const vieneDePresupuesto = (visita.motivo || '').toLowerCase().includes('presupuesto') || visita.esVirtualPpto;
+
     const estadoBadge = `
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
             <button onclick="_abrirMenuEstado(${repIdx})"
@@ -693,6 +688,7 @@ function _buildCard(visita, repIdx) {
                        border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;">
                 ${conf.label} ▾
             </button>
+            ${vieneDePresupuesto && (esFacturado || esPagado) ? `<div style="font-size:9px;color:#fb923c;font-weight:800;background:rgba(251,146,60,0.1);padding:2px 6px;border-radius:4px;border:1px solid rgba(251,146,60,0.3);">📝 Ppto. Enviado</div>` : ''}
             ${esFacturado ? `
             <button onclick="_marcarPagado(${repIdx})"
                 style="background:#1a3300;color:#86efac;border:1px solid #22c55e;
@@ -902,35 +898,46 @@ async function _vincularConARCA() {
             const rn = String(d.remito || d.Remito || '').trim();
             if (rn) arcaByRemito[rn] = d;
         });
+        
         let vinculados = 0;
         const promises = [];
+        
         _repVisitas.forEach(function(v) {
             const e = _clasEstado(v);
             if (e !== 'facturado' && e !== 'pagado') return;
             const match = (v.remito && arcaByRemito[v.remito]) || arcaByFact[_nf(v.facturado)] || null;
             if (!match) return;
+            
             v.totalARCA = Number(match.importe || match.total || 0);
+            const nroArc = match.factura || match.Factura || '';
+            
             if (!v.facturado || _estadosSimples.includes(v.facturado.toLowerCase().trim())) {
-                const nroArc = match.factura || match.Factura || '';
                 if (nroArc) v.facturado = nroArc;
             }
+            
             vinculados++;
+            
+            // NUEVO: Fuerza la actualización en Google Sheets para que los informes lo tomen
+            promises.push(llamarAPI({ accion: "sincronizarFacturacionForm4", payload: { gym: v.gym, fecha: v.fechaStr, estado: v.facturado, remito: v.remito || '' } }, 15000).catch(()=>{}));
+            
             if (v.motivo && v.motivo.trim().length > 5) {
-                promises.push(llamarAPI({ accion: 'actualizarDescripcionEmitido', payload: { remito: v.remito || '', factura: v.facturado || '', descripcion: v.motivo, total: v.totalARCA } }, SF_TIMEOUT?.NORMAL || 15000).catch(function(){}));
+                promises.push(llamarAPI({ accion: 'actualizarDescripcionEmitido', payload: { remito: v.remito || '', factura: v.facturado || '', descripcion: v.motivo, total: v.totalARCA } }, 15000).catch(()=>{}));
             }
         });
+        
         await Promise.allSettled(promises);
         _renderTarjetas();
+        
         const kpiEl = document.getElementById('_rep-kpi-bar');
         if (kpiEl) {
             const msg = document.createElement('div');
             msg.style.cssText = 'font-size:11px;color:#86efac;font-weight:800;padding:6px 14px;text-align:center;';
-            msg.textContent = '\u2705 Vinculados ' + vinculados + ' registro(s) con ARCA';
+            msg.textContent = '✅ Vinculados ' + vinculados + ' registro(s) con ARCA';
             kpiEl.parentNode.insertBefore(msg, kpiEl.nextSibling);
             setTimeout(function() { msg.remove(); }, 4000);
         }
     } catch(e) { console.warn("[inf-rep] _vincularConARCA:", e?.message); }
-    finally { if (btn) { btn.textContent = '\uD83D\uDD17 Vincular ARCA'; btn.disabled = false; } }
+    finally { if (btn) { btn.textContent = '🔗 Vincular ARCA'; btn.disabled = false; } }
 }
 
 const _estadosSimples = ['facturado','pagado','pendiente','presupuestado','enviado','no','si',''];
@@ -1004,10 +1011,41 @@ async function renderizarVistaReparaciones() {
     if (!cont) return;
     cont.innerHTML = '<div style="text-align:center;padding:24px;color:' + _COL.muted + ';">⏳ Cargando...</div>';
     let visitas = [];
+    
     try {
-        visitas = await llamarAPI({ accion: "obtenerReparacionesPendientes", payload: { dias: 90 } }, SF_TIMEOUT?.REPARACIONES || 20000);
+        // Le damos 35 segundos para cargar el módulo pesado sin que crashee si la variable no existe
+        const timeout = (typeof SF_TIMEOUT !== 'undefined' && SF_TIMEOUT.REPARACIONES) ? SF_TIMEOUT.REPARACIONES : 35000;
+        visitas = await llamarAPI({ accion: "obtenerReparacionesPendientes", payload: { dias: 90 } }, timeout);
+        
+        try {
+            const emitidos = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, timeout);
+            if (Array.isArray(emitidos)) {
+                emitidos.forEach(p => {
+                    if (p.tipoDoc === "Abono" || p.tipo === "Abono" || String(p.items?.[0]?.desc || '').toLowerCase().includes('mantenimiento preventivo')) return; 
+                    
+                    const yaExiste = visitas.some(v => (v.remito && v.remito === p.remito) || (v.gym === String(p.cliente).toUpperCase() && v.fechaStr === p.fecha));
+                    if (!yaExiste) {
+                        visitas.push({
+                            fechaStr: p.fecha || p.fechaVisita || 'Sin Fecha',
+                            gym: String(p.cliente || 'GIMNASIO IMPORTADO').toUpperCase().trim(),
+                            tecnico: 'Presupuestar Web',
+                            motivo: p.items && p.items[0] ? p.items[0].desc : 'Presupuesto creado desde módulo de presupuestar',
+                            remito: p.remito || '',
+                            facturado: p.numFactura || p.factura || p.estado || 'presupuestado',
+                            pago: p.pagado || 'Pendiente',
+                            necesitaRep: true,
+                            totalARCA: Number(p.total || 0),
+                            foto: '',
+                            linkCarpeta: '',
+                            esVirtualPpto: true
+                        });
+                    }
+                });
+            }
+        } catch(err) { console.warn("No se pudieron cargar los presupuestos emitidos"); }
+        
     } catch(e) {
-        // FIX: fallback mejorado — usar historialGlobal si está disponible (compartido entre módulos)
+        // SIN MENSAJES EN CONSOLA - Carga desde memoria si el backend tarda mucho
         const hist = window.historialGlobal || [];
         if (hist.length > 0) {
             const corte = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
@@ -1032,10 +1070,11 @@ async function renderizarVistaReparaciones() {
             cont.innerHTML = '<div style="text-align:center;padding:32px;color:' + _COL.muted + ';">'
                 + '<div style="font-size:28px;margin-bottom:10px;">🔌</div>'
                 + '<div style="font-size:13px;font-weight:700;">Sin conexión al servidor.</div>'
-                + '<div style="font-size:11px;margin-top:6px;">Verificá tu internet y tocá Actualizar.</div></div>';
+                + '<div style="font-size:11px;margin-top:6px;">Verificá tu internet e intentá de nuevo.</div></div>';
             return;
         }
     }
+
     visitas.sort(function(a, b) {
         const pa = (a.fechaStr || '').split('/').reverse().join('');
         const pb = (b.fechaStr || '').split('/').reverse().join('');
@@ -1043,8 +1082,6 @@ async function renderizarVistaReparaciones() {
     });
     _repVisitas = visitas;
 
-    // Enriquecer con números de factura guardados localmente (sobreviven recargas)
-    // El backend devuelve "facturado" en col G; el número real se guarda en localStorage al confirmar
     try {
         const fc = JSON.parse(localStorage.getItem('_rep_fact_cache') || '{}');
         _repVisitas.forEach(function(v) {
@@ -1052,27 +1089,30 @@ async function renderizarVistaReparaciones() {
                 v.facturado = fc[v.remito];
             }
         });
-    } catch(ex) { console.warn("[inf-rep] fact_cache read:", ex?.message); }
+    } catch(ex) {} // Silencioso
+
     if (!visitas.length) {
         cont.innerHTML = '<div style="text-align:center;padding:32px;color:' + _COL.muted + ';">✅ No hay reparaciones en los últimos 90 días.</div>';
         return;
     }
+
     const mesesSet = new Set();
     visitas.forEach(function(v) { const p = (v.fechaStr || '').split('/'); if (p.length === 3) mesesSet.add(p[2] + '-' + p[1]); });
     const mesesArr = Array.from(mesesSet).sort().reverse();
-    let mesesH = '<button class="_rep-mes-btn" data-mes="" onclick="_setMesFiltroRep(\'\')" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:11px;font-weight:800;background:#1a73e8;color:white;margin:2px;">Ver todos</button>';
+    let mesesH = '<button class="_rep-mes-btn" data-mes="" onclick="_setMesFiltroRep(&apos;&apos;)" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:11px;font-weight:800;background:#1a73e8;color:white;margin:2px;">Ver todos</button>';
     mesesArr.forEach(function(key) {
         const [año, mm] = key.split('-');
         const nom = (_MESES_R[parseInt(mm) - 1] || mm) + ' ' + año;
-        mesesH += '<button class="_rep-mes-btn" data-mes="' + key + '" onclick="_setMesFiltroRep(\'' + key + '\')" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:rgba(255,255,255,0.06);color:' + _COL.muted + ';margin:2px;">' + nom + '</button>';
+        mesesH += '<button class="_rep-mes-btn" data-mes="' + key + '" onclick="_setMesFiltroRep(&apos;' + key + '&apos;)" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:11px;font-weight:700;background:rgba(255,255,255,0.06);color:' + _COL.muted + ';margin:2px;">' + nom + '</button>';
     });
+
     const fEl = document.getElementById('_rep-filtros-mes');
     if (fEl) fEl.innerHTML = mesesH;
     _repBusqueda = ''; _repMesFiltro = '';
     const sEl = document.getElementById('_rep-search');
     if (sEl) sEl.value = '';
     _setTabRep(_repTabActivo || 'pendiente');
-    _actualizarKPIRep(); // KPI bar
+    _actualizarKPIRep(); 
     _renderCalc();
 }
 
@@ -1104,7 +1144,7 @@ function _inyectarVistaReparaciones() {
     root.dataset.injected = '1';
 
     const tabsHTML = _TABS_REP.map(function(t) {
-        return '<button id="_rtab-' + t.id + '" onclick="_setTabRep(\'' + t.id + '\')"'
+        return '<button id="_rtab-' + t.id + '" onclick="_setTabRep(&apos;' + t.id + '&apos;)"'
             + ' style="flex:1;padding:10px 8px;border:none;border-bottom:2px solid transparent;'
             + 'background:rgba(255,255,255,0.04);color:' + _COL.muted + ';font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;min-width:0;">'
             + '<span id="_rtab-lbl-' + t.id + '">' + t.label.split(' ').slice(1).join(' ') + '</span>'
@@ -1141,6 +1181,7 @@ function _inyectarVistaReparaciones() {
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         + '<div style="font-size:11px;font-weight:900;color:' + _COL.muted + ';text-transform:uppercase;letter-spacing:0.5px;">🔧 VISITAS CON TRABAJO (90 días)</div>'
         + '<div style="display:flex;gap:6px;">'
+        + '<button onclick="auditoriaARCA()" style="background:#4a0e0e;color:#f87171;border:1px solid #7f1d1d;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;">🕵️ Auditoría</button>'
         + '<button onclick="_vincularConARCA()" style="background:linear-gradient(135deg,#7c3aed,#4c1d95);border:none;color:white;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;">🔗 Vincular ARCA</button>'
         + '<button onclick="renderizarVistaReparaciones()" style="background:none;border:1px solid rgba(255,255,255,0.1);color:' + _COL.muted + ';border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;">🔄 Actualizar</button>'
         + '</div>'
@@ -1226,4 +1267,60 @@ function _kpiItem(n, color, label, sub) {
 function ocultarVistaReparaciones() {
     const root = document.getElementById('_rep-root');
     if (root) root.style.display = 'none';
+}
+
+function auditoriaARCA() {
+    const anomalias = _repVisitas.filter(v => {
+        const est = _clasEstado(v);
+        const esFact = (est === 'facturado' || est === 'pagado');
+        const faltaMonto = (v.totalARCA === 0 || !v.totalARCA);
+        const tieneNroFact = v.facturado && !_estadosSimples.includes(v.facturado.toLowerCase().trim());
+        return (esFact && faltaMonto && tieneNroFact);
+    });
+
+    const existente = document.getElementById('_modal-auditoria-rep');
+    if (existente) existente.remove();
+
+    const modal = document.createElement('div');
+    modal.id = '_modal-auditoria-rep';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+
+    if (anomalias.length === 0) {
+        modal.innerHTML = `
+            <div style="background:#1e293b;border-radius:16px;max-width:400px;width:100%;padding:24px;text-align:center;border:1px solid rgba(74,222,128,0.2);">
+                <div style="font-size:40px;margin-bottom:12px;">✅</div>
+                <h2 style="margin:0 0 8px;color:#4ade80;font-size:18px;font-weight:900;">Auditoría Perfecta</h2>
+                <p style="margin:0 0 20px;color:#94a3b8;font-size:13px;line-height:1.5;">Todos los registros facturados tienen su monto vinculado a ARCA correctamente.</p>
+                <button onclick="document.getElementById('_modal-auditoria-rep').remove()" style="background:#4ade80;color:#14532d;border:none;padding:10px 24px;border-radius:8px;font-weight:900;cursor:pointer;">Entendido</button>
+            </div>`;
+    } else {
+        const filas = anomalias.map(a => `
+            <div style="background:#0f172a;border-radius:8px;padding:10px 14px;margin-bottom:8px;border:1px solid rgba(248,113,113,0.2);display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-weight:900;color:#f1f5f9;font-size:13px;">${a.gym}</div>
+                    <div style="color:#94a3b8;font-size:11px;margin-top:2px;">Remito: ${a.remito || 'N/A'}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="background:#4a0e0e;color:#f87171;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:800;">Factura: ${a.facturado}</div>
+                    <div style="color:#fb923c;font-size:10px;font-weight:700;margin-top:4px;">Monto $0 (Falta vincular)</div>
+                </div>
+            </div>
+        `).join('');
+
+        modal.innerHTML = `
+            <div style="background:#1e293b;border-radius:16px;max-width:500px;width:100%;padding:24px;border:1px solid rgba(248,113,113,0.3);max-height:80vh;display:flex;flex-direction:column;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <div>
+                        <h2 style="margin:0;color:#f87171;font-size:18px;font-weight:900;">⚠️ Inconsistencias ARCA</h2>
+                        <p style="margin:4px 0 0;color:#94a3b8;font-size:12px;">Se encontraron ${anomalias.length} registros sin vincular.</p>
+                    </div>
+                    <button onclick="document.getElementById('_modal-auditoria-rep').remove()" style="background:rgba(255,255,255,0.05);color:#fff;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;font-weight:900;">✕</button>
+                </div>
+                <div style="overflow-y:auto;padding-right:4px;margin-bottom:16px;">${filas}</div>
+                <button onclick="document.getElementById('_modal-auditoria-rep').remove()" style="background:rgba(255,255,255,0.05);color:#f1f5f9;border:1px solid rgba(255,255,255,0.1);padding:12px;border-radius:8px;font-weight:800;cursor:pointer;width:100%;">Cerrar</button>
+            </div>`;
+    }
+    
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }

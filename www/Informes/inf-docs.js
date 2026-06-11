@@ -57,7 +57,10 @@ async function guardarDocumento() {
             fechaVisita: fechaSeleccionadaOriginal, 
             pagado: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.pagado || "Pendiente") : "Pendiente",
             cuit: cuitVal,
-            numFactura: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.numFactura || "") : "" // 🔥 CONSERVAMOS LA FACTURA
+            numFactura: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.numFactura || "") : "",
+            // FIX: presupuestos creados manualmente siempre son Reparacion
+            tipoDoc: "Reparacion",
+            remito: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.remito || "") : ""
         }
     };
 
@@ -202,7 +205,8 @@ function setFiltroTipo(valor) {
 //////////////////////////////////////
 let _cuitSetAbonos = null;
 function _getCuitSetAbonos() {
-    if (_cuitSetAbonos) return _cuitSetAbonos;
+    // No cachear si la lista todavía no cargó — así el próximo render lo intenta de nuevo
+    if (_cuitSetAbonos && _cuitSetAbonos.size > 0) return _cuitSetAbonos;
     _cuitSetAbonos = new Set();
     if (typeof listaAbonosBase !== 'undefined' && listaAbonosBase.length > 0) {
         listaAbonosBase.forEach(a => {
@@ -210,7 +214,9 @@ function _getCuitSetAbonos() {
             if (c.length >= 8) _cuitSetAbonos.add(c);
         });
     }
-    return _cuitSetAbonos;
+    // Si quedó vacío, no guardar caché para que se reintente
+    if (_cuitSetAbonos.size === 0) _cuitSetAbonos = null;
+    return _cuitSetAbonos || new Set();
 }
 // Invalidar el set cuando se recarguen los abonos
 function _invalidarCuitSet() { _cuitSetAbonos = null; }
@@ -218,50 +224,46 @@ function _invalidarCuitSet() { _cuitSetAbonos = null; }
  
 /**
  * Clasifica un documento en:
- *   'abono'     → mantenimiento preventivo (descripción o CUIT conocido)
- *   'reparacion'→ reparación con descripción manual
- *   'sin_desc'  → importado de ARCA sin identificar, CUIT desconocido
+ *   'abono'          → mantenimiento preventivo mensual
+ *   'reparacion'     → reparación con descripción manual
+ *   'presup_enviado' → presupuesto enviado al cliente (en proceso de aprobación)
+ *   'sin_desc'       → importado de ARCA sin identificar
  *
- * LÓGICA:
- * 1. Si algún ítem dice "mantenimiento preventivo" → abono explícito
- * 2. Si tiene descripción real (no vacía ni "Pendiente..."):
- *    → Es una reparación con detalle
- * 3. Si NO tiene descripción (o dice "Pendiente de edición..."):
- *    → Buscar el CUIT en Base Abonos
- *    → Si el CUIT está → probable abono no identificado → 'abono'
- *    → Si no está → sin descripción genuina → 'sin_desc'
+ * PRIORIDAD (de mayor a menor):
+ * 1. Si el CUIT está en Base Abonos → SIEMPRE es abono (más confiable que tipoDoc)
+ * 2. Si la descripción dice "mantenimiento preventivo" → abono
+ * 3. tipoDoc del backend → para distinguir presup_enviado vs reparacion
+ * 4. Heurística por estado y descripción
+ */
+/**
+ * Clasifica un documento con UNA SOLA REGLA DETERMINISTA:
+ *
+ *   Si el CUIT del documento existe en Base Abonos  → 'abono'
+ *   Si no existe                                    → 'reparacion' o 'presup_enviado'
+ *
+ * No hay heurísticas por nombre ni por descripción.
+ * La única fuente de verdad es Base Abonos (listaAbonosBase).
+ *
+ * Excepción: si el estado es "Enviado" y NO es abono → 'presup_enviado'
  */
 function clasificarDocumento(doc) {
-    const items = doc.items || [];
- 
-    // Todas las descripciones
-    const descs = items.map(i => String(i.desc || '').toLowerCase().trim());
- 
-    // 1. Mantenimiento preventivo explícito
-    if (descs.some(d => d.includes('mantenimiento preventivo'))) return 'abono';
- 
-    // ── Determinar si la descripción es "vacía" ───────────────────
-    const DESC_VACIAS = new Set([
-        'pendiente de edición...',
-        'pendiente de edicion...',
-        '—', '-', '', 'sin descripcion', 'sin descripción'
-    ]);
-    const primerDesc = descs[0] || '';
-    const esSinDesc = items.length === 0 || DESC_VACIAS.has(primerDesc);
- 
-    // 2. Tiene descripción real → reparación
-    if (!esSinDesc) return 'reparacion';
- 
-    // 3. Sin descripción → buscar CUIT en Base Abonos
+    const estado = (doc.estado || '').toLowerCase().trim();
+
+    // ── REGLA ÚNICA: buscar CUIT en Base Abonos ──────────────────────
     if (doc.cuit) {
-        const cuitLimpio = String(doc.cuit).replace(/\D/g, '');
-        if (cuitLimpio.length >= 8 && _getCuitSetAbonos().has(cuitLimpio)) {
-            return 'abono'; // ARCA importó una factura de un abono conocido
+        const cuitDoc = String(doc.cuit).replace(/\D/g, '');
+        if (cuitDoc.length >= 8) {
+            const setAbonos = _getCuitSetAbonos();
+            if (setAbonos.size > 0 && setAbonos.has(cuitDoc)) {
+                return 'abono';
+            }
         }
     }
- 
-    // 4. Sin descripción y CUIT desconocido
-    return 'sin_desc';
+
+    // ── No está en Base Abonos → es una reparación ───────────────────
+    // Sub-tipo: si está en estado "Enviado" es un presupuesto en proceso
+    if (estado === 'enviado') return 'presup_enviado';
+    return 'reparacion';
 }
  
  
@@ -294,14 +296,22 @@ function badgeTipoDoc(tipo, doc) {
             bg:    '#1a3520',
             color: '#4ade80',
             border:'rgba(74,222,128,0.3)',
-            title: 'Documento con descripción de reparación manual'
+            title: 'Presupuesto de reparación con detalle manual'
+        },
+        // FIX 2: nuevo tipo para presupuestos enviados al cliente
+        presup_enviado: {
+            label: '📤 Presup. Enviado',
+            bg:    '#2d1f4e',
+            color: '#c084fc',
+            border:'rgba(192,132,252,0.35)',
+            title: 'Presupuesto enviado al cliente — en proceso de aprobación'
         },
         sin_desc: {
-            label: '⚠️ Sin Descripción',
+            label: '⚠️ Sin CUIT',
             bg:    '#3d2500',
             color: '#fb923c',
             border:'rgba(251,146,60,0.4)',
-            title: 'Importado de ARCA sin descripción identificable ni CUIT en Base Abonos'
+            title: 'Reparación sin CUIT verificable — no se puede confirmar si es abono o reparación'
         },
     };
  
@@ -365,7 +375,9 @@ function renderizarTarjetas() {
             || pagadoNorm === filtroPagoActual
             || pagadoNorm.toLowerCase() === filtroPagoActual.toLowerCase());
         const matchMes  = (filtroMesActual  === 'Todos' || d.mesAnio === filtroMesActual);
-        const matchTipo = (filtroTipoActual === 'todos' || d._tipo === filtroTipoActual);
+        const matchTipo = filtroTipoActual === 'todos' ? true
+            : filtroTipoActual === 'sin_cuit' ? (d._tipo === 'reparacion' && !String(d.cuit || '').replace(/\D/g,'').length)
+            : d._tipo === filtroTipoActual;
         return matchPago && matchMes && matchTipo;
     });
  
@@ -401,15 +413,18 @@ function renderizarTarjetas() {
     }
     if (tipoScrollEl) {
         // Contar por tipo para mostrar en el chip
-        const conteos = { todos: filtrados.length, abono: 0, reparacion: 0, sin_desc: 0 };
+        const conteos = { todos: filtrados.length, abono: 0, reparacion: 0, presup_enviado: 0 };
         filtrados.forEach(d => { if (conteos[d._tipo] !== undefined) conteos[d._tipo]++; });
  
+        // Contar reparaciones sin CUIT (no verificables)
+        const sinCuitCount = filtrados.filter(d => d._tipo === 'reparacion' && !String(d.cuit || '').replace(/\D/g,'').length).length;
         const tiposChips = [
-            { val: 'todos',     label: `Todos (${conteos.todos})`,                       color: '#1a73e8' },
-            { val: 'abono',     label: `📅 Abonos (${conteos.abono})`,                   color: '#60a5fa' },
-            { val: 'reparacion',label: `🔧 Reparaciones (${conteos.reparacion})`,        color: '#4ade80' },
-            { val: 'sin_desc',  label: `⚠️ Sin Descripción (${conteos.sin_desc})`,       color: '#fb923c' },
-        ];
+            { val: 'todos',          label: `Todos (${conteos.todos})`,                       color: '#1a73e8' },
+            { val: 'abono',          label: `📅 Abonos (${conteos.abono})`,                   color: '#60a5fa' },
+            { val: 'reparacion',     label: `🔧 Reparaciones (${conteos.reparacion})`,        color: '#4ade80' },
+            { val: 'presup_enviado', label: `📤 Enviados (${conteos.presup_enviado})`,         color: '#c084fc' },
+            sinCuitCount > 0 ? { val: 'sin_cuit', label: `⚠️ Sin CUIT (${sinCuitCount})`, color: '#fb923c' } : null,
+        ].filter(Boolean);
         tipoScrollEl.innerHTML = tiposChips.map(t => `
             <button onclick="setFiltroTipo('${t.val}')"
                     style="padding:5px 12px; border-radius:20px; font-size:12px; font-weight:700;
@@ -480,13 +495,8 @@ function renderizarTarjetas() {
         const bdgTipo = badgeTipoDoc(doc._tipo, doc);
  
         // ── ALERTA ESPECIAL para "sin descripción" ────────────
-        const alertaSinDesc = doc._tipo === 'sin_desc' ? `
-            <div style="background:rgba(251,146,60,0.12); border:1px solid rgba(251,146,60,0.3);
-                        border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:12px;
-                        color:#fb923c; font-weight:700;">
-                ⚠️ Este documento fue importado de ARCA sin descripción identificable.
-                Tocá <b>✏️ Editar</b> para agregar el detalle de la reparación.
-            </div>` : '';
+        const alertaSinDesc = '';  // clasificación ahora es binaria: abono o reparacion
+
  
         let maquinasHTML = '';
         if (doc.items && Array.isArray(doc.items)) {
@@ -1298,10 +1308,148 @@ async function confirmarSincronizacionARCA() {
 }
 
 function setSectorAbono(sec) { sectorAbonoActual = sec; renderizarAbonos(); }
+
+// ════════════════════════════════════════════════════════════════
+//  FIX 3: Vincular ARCA desde la pestaña Presupuestar
+//  Marca las facturas en documentosGuardados cruzando por CUIT+importe
+//  con lo que devuelve sincronizarConBaseARCA (mismo algoritmo del backend).
+// ════════════════════════════════════════════════════════════════
+async function vincularARCADesdePresupuestar() {
+    const btn = document.getElementById('btn-vincular-arca-presup');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Vinculando...'; }
+    mostrarMensaje('Analizando ARCA para presupuestos... ⏳', 'cargando');
+    try {
+        const respuesta = await llamarAPI({ accion: 'sincronizarConBaseARCA' });
+        mostrarMensaje('🚀 ' + respuesta, 'exito');
+        // Recargar documentos para reflejar facturas vinculadas
+        await obtenerYRenderizarCreados();
+    } catch(e) {
+        mostrarMensaje('❌ Error: ' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔗 Vincular ARCA'; }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  FIX 4: AUDITORÍA — detecta inconsistencias en documentosGuardados
+// ════════════════════════════════════════════════════════════════
+function abrirAuditoria() {
+    const docs = documentosGuardados;
+    if (!docs || !docs.length) {
+        mostrarMensaje('No hay documentos cargados para auditar.', 'error');
+        return;
+    }
+
+    // Categorías de problemas
+    const errores = [];
+
+    docs.forEach(doc => {
+        const problemas = [];
+        const tipo  = doc._tipo || clasificarDocumento(doc);
+        const total = Number(doc.total || 0);
+        const fact  = String(doc.numFactura || '').trim();
+        const cuit  = String(doc.cuit || '').replace(/\D/g,'');
+        const estado = String(doc.estado || '').trim();
+        const fecha  = doc.fechaLimpia || String(doc.fecha || '');
+
+        // 1. Sin descripción y sin CUIT conocido
+        // Reparación sin CUIT — no se puede verificar si es abono
+        if (tipo === 'reparacion' && !String(doc.cuit || '').replace(/\D/g,'').length) {
+            problemas.push('Reparación sin CUIT — no verificable contra Base Abonos');
+        }
+        // Reparación con CUIT pero no está en Base Abonos — posible abono mal cargado
+        if (tipo === 'reparacion' && String(doc.cuit || '').replace(/\D/g,'').length >= 8) {
+            const cuitDoc = String(doc.cuit).replace(/\D/g,'');
+            const setAb = _getCuitSetAbonos();
+            if (setAb.size > 0 && !setAb.has(cuitDoc)) {
+                // No es un error — es genuinamente una reparación
+                // Solo marcar si el nombre suena a consorcio/club (posible abono no registrado)
+                const nombreLower = String(doc.cliente || '').toLowerCase();
+                const suenaAbono = ['consorcio','club','country','edificio','barrio','torre'].some(k => nombreLower.includes(k));
+                if (suenaAbono) problemas.push('Posible abono no registrado en Base Abonos — CUIT ' + doc.cuit + ' no encontrado');
+            }
+        }
+        // 2. Facturado sin número de factura
+        if (estado === 'Facturado / Aprobado' && !fact) problemas.push('Estado "Facturado" pero sin número de factura');
+        // 3. Total $0
+        if (total === 0) problemas.push('Total $0 — falta completar el importe');
+        // 4. CUIT con menos de 10 dígitos (inválido)
+        if (cuit && cuit.length < 10) problemas.push(`CUIT inválido: ${doc.cuit}`);
+        // 5. Sin fecha
+        if (!fecha || fecha === 'Sin Fecha') problemas.push('Sin fecha de emisión');
+        // 6. Abono importado de ARCA sin nombre real (sigue siendo "⚠️ IMPORTADO")
+        if (tipo === 'abono' && String(doc.cliente || '').includes('IMPORTADO')) problemas.push('Abono sin nombre de gimnasio identificado');
+        // 7. Presupuesto enviado sin número de factura hace más de 30 días
+        if (tipo === 'presup_enviado' && !fact && fecha) {
+            const partes = fecha.split('/');
+            if (partes.length === 3) {
+                const fechaDoc = new Date(partes[2], partes[1]-1, partes[0]);
+                const diasDesde = Math.floor((Date.now() - fechaDoc.getTime()) / 86400000);
+                if (diasDesde > 30) problemas.push(`Enviado hace ${diasDesde} días sin factura registrada`);
+            }
+        }
+
+        if (problemas.length > 0) errores.push({ doc, problemas, tipo });
+    });
+
+    // Construir modal de auditoría
+    const existente = document.getElementById('_modal-auditoria');
+    if (existente) existente.remove();
+
+    const modal = document.createElement('div');
+    modal.id = '_modal-auditoria';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;backdrop-filter:blur(4px);';
+
+    const tipoBadgeColor = { abono:'#60a5fa', reparacion:'#4ade80', presup_enviado:'#c084fc', sin_desc:'#fb923c' };
+
+    const filas = errores.length === 0
+        ? `<div style="text-align:center;padding:30px;color:#4ade80;font-size:15px;font-weight:800;">✅ Sin errores detectados — todo el algoritmo funciona correctamente.</div>`
+        : errores.map((e, idx) => {
+            const color = tipoBadgeColor[e.tipo] || '#fb923c';
+            return `<div style="background:#0f172a;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+                    <span style="font-weight:900;font-size:13px;color:#e2e8f0;">${e.doc.cliente || '—'}</span>
+                    ${e.doc.numFactura ? `<span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">${e.doc.numFactura}</span>` : ''}
+                    <span style="background:${color}22;color:${color};border:1px solid ${color}44;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:800;">${e.tipo}</span>
+                    <span style="color:#64748b;font-size:11px;">${e.doc.fechaLimpia || ''}</span>
+                    <span style="color:#1a73e8;font-weight:900;font-size:12px;">$${Number(e.doc.total||0).toLocaleString('es-AR')}</span>
+                </div>
+                <ul style="margin:0;padding-left:16px;">
+                    ${e.problemas.map(p => `<li style="font-size:12px;color:#fb923c;font-weight:700;margin-bottom:3px;">⚠️ ${p}</li>`).join('')}
+                </ul>
+            </div>`;
+        }).join('');
+
+    modal.innerHTML = `
+        <div style="background:#1e293b;border-radius:16px;max-width:700px;width:100%;padding:24px;border:1px solid rgba(255,255,255,0.08);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <div>
+                    <h2 style="margin:0;color:#e2e8f0;font-size:18px;font-weight:900;">🔍 Auditoría de Facturas</h2>
+                    <p style="margin:4px 0 0;color:#64748b;font-size:12px;">${errores.length} problema(s) detectado(s) en ${docs.length} documentos</p>
+                </div>
+                <button onclick="document.getElementById('_modal-auditoria').remove()"
+                        style="background:rgba(255,255,255,0.08);border:none;color:#e2e8f0;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:900;">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+                ${[
+                    { label:'Total docs', val: docs.length, color:'#60a5fa' },
+                    { label:'Con errores', val: errores.length, color: errores.length>0?'#fb923c':'#4ade80' },
+                    { label:'Sin CUIT', val: docs.filter(d=>d._tipo==='reparacion' && !String(d.cuit||'').replace(/\D/g,'').length).length, color:'#fb923c' },
+                    { label:'Enviados +30d', val: errores.filter(e=>e.problemas.some(p=>p.includes('Enviado hace'))).length, color:'#c084fc' },
+                ].map(k=>`
+                    <div style="background:#0f172a;border-radius:10px;padding:10px;text-align:center;border:1px solid rgba(255,255,255,0.06);">
+                        <div style="font-size:22px;font-weight:900;color:${k.color};">${k.val}</div>
+                        <div style="font-size:10px;color:#64748b;font-weight:700;">${k.label}</div>
+                    </div>`).join('')}
+            </div>
+            <div style="max-height:55vh;overflow-y:auto;">${filas}</div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
 // ════════════════════════════════════════════════════════════════
 //  📋 PDF LISTA MENSUAL — Control de facturas en papel
-//  Genera un PDF A4 vertical con todas las facturas del rango seleccionado.
-//  Incluye columnas: N°, Cliente, CUIT, Factura, Monto, Fecha, Estado (checkbox).
 // ════════════════════════════════════════════════════════════════
 
 // Modal de configuración antes de generar
@@ -1344,7 +1492,7 @@ function generarPDFListaMensual() {
 
             <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">FILTRAR POR TIPO</label>
             <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
-                ${[['todos','Todos','#1a73e8'],['abono','Abonos','#60a5fa'],['reparacion','Reparaciones','#4ade80'],['sin_desc','Sin Descripción','#fb923c']].map(([v,l,c]) =>
+                ${[['todos','Todos','#1a73e8'],['abono','Abonos','#60a5fa'],['reparacion','Reparaciones','#4ade80'],['presup_enviado','Enviados','#c084fc']].map(([v,l,c]) =>
                     `<button data-tipo="${v}" onclick="_lpdfSetTipo(this,'${v}')"
                         style="padding:6px 12px;border-radius:8px;border:1.5px solid ${c};
                                background:${v==='todos'?c:'transparent'};color:${v==='todos'?'white':c};
@@ -1403,7 +1551,7 @@ function _lpdfSetTipo(btn, tipo) {
     window._lpdfTipoActual = tipo;
     document.querySelectorAll('[data-tipo]').forEach(function(b) {
         const t = b.dataset.tipo;
-        const colors = {todos:'#1a73e8',abono:'#60a5fa',reparacion:'#4ade80',sin_desc:'#fb923c'};
+        const colors = {todos:'#1a73e8',abono:'#60a5fa',reparacion:'#4ade80',presup_enviado:'#c084fc'};
         const c = colors[t] || '#1a73e8';
         b.style.background = t === tipo ? c : 'transparent';
         b.style.color      = t === tipo ? 'white' : c;
@@ -1469,8 +1617,8 @@ async function _generarListaPDFEjecutar() {
     const filas = docs.map(function(doc, i) {
         const bgRow    = i % 2 === 0 ? '#ffffff' : '#f8f9fc';
         const factNum  = String(doc.numFactura || '—');
-        const tipoBadge = doc._tipo === 'abono' ? '#1d4ed8' : doc._tipo === 'reparacion' ? '#15803d' : '#92400e';
-        const tipoLabel = doc._tipo === 'abono' ? 'Abono' : doc._tipo === 'reparacion' ? 'Rep.' : '?';
+        const tipoBadge = doc._tipo === 'abono' ? '#1d4ed8' : doc._tipo === 'reparacion' ? '#15803d' : doc._tipo === 'presup_enviado' ? '#6b21a8' : '#92400e';
+        const tipoLabel = doc._tipo === 'abono' ? 'Abono' : doc._tipo === 'reparacion' ? 'Rep.' : doc._tipo === 'presup_enviado' ? 'Env.' : '?';
         const checkCols = columnas.map(function() {
             return `<td style="text-align:center;border-bottom:1px solid #e5e7eb;padding:7px 4px;">
                         <div style="width:16px;height:16px;border:1.5px solid #9ca3af;border-radius:3px;margin:0 auto;"></div>
