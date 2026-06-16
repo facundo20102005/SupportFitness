@@ -246,10 +246,23 @@ function _invalidarCuitSet() { _cuitSetAbonos = null; }
  *
  * Excepción: si el estado es "Enviado" y NO es abono → 'presup_enviado'
  */
+/**
+ * Clasifica un documento con prioridad en la selección manual de tipoDoc.
+ * Si no posee una selección explícita, recurre a las reglas deterministas de la Base de Abonos.
+ */
 function clasificarDocumento(doc) {
+    // ── PRIORIDAD MÁXIMA: Selector manual ──
+    if (doc.tipoDoc) {
+        const tipo = doc.tipoDoc.toLowerCase();
+        if (tipo.includes('abono')) return 'abono';
+        // Si dice "presu", le asigna el ícono MORADO de "Enviado" (para auditar)
+        if (tipo.includes('presu')) return 'presup_enviado'; 
+        if (tipo.includes('reparaci')) return 'reparacion';
+    }
+
     const estado = (doc.estado || '').toLowerCase().trim();
 
-    // ── REGLA ÚNICA: buscar CUIT en Base Abonos ──────────────────────
+    // ── REGLA SECUNDARIA: CUIT ──
     if (doc.cuit) {
         const cuitDoc = String(doc.cuit).replace(/\D/g, '');
         if (cuitDoc.length >= 8) {
@@ -260,8 +273,7 @@ function clasificarDocumento(doc) {
         }
     }
 
-    // ── No está en Base Abonos → es una reparación ───────────────────
-    // Sub-tipo: si está en estado "Enviado" es un presupuesto en proceso
+    // ── POR DEFECTO ──
     if (estado === 'enviado') return 'presup_enviado';
     return 'reparacion';
 }
@@ -273,7 +285,7 @@ function clasificarDocumento(doc) {
  * o solo por CUIT (muestra "📅 Abono (por CUIT)" en el segundo caso).
  */
 function badgeTipoDoc(tipo, doc) {
-    // Detectar si el abono fue identificado por CUIT (no por descripción)
+    // Detectar si el abono fue identificado por CUIT...
     let esPorCuit = false;
     if (tipo === 'abono' && doc) {
         const descs = (doc.items || []).map(i => String(i.desc || '').toLowerCase());
@@ -314,9 +326,11 @@ function badgeTipoDoc(tipo, doc) {
             title: 'Reparación sin CUIT verificable — no se puede confirmar si es abono o reparación'
         },
     };
- 
     const c = conf[tipo] || conf['sin_desc'];
-    return `<span title="${c.title}"
+    const docId = doc ? doc.id : 'temp'; // Aseguramos que tenga un ID
+
+    // 🔥 AGREGAMOS id="badge-tipo-${docId}" AL SPAN 🔥
+    return `<span id="badge-tipo-${docId}" title="${c.title}"
         style="background:${c.bg}; color:${c.color}; border:1px solid ${c.border};
                padding:2px 8px; border-radius:6px; font-size:10px; font-weight:800;
                letter-spacing:0.3px; white-space:nowrap; flex-shrink:0; cursor:help;">
@@ -381,13 +395,27 @@ function renderizarTarjetas() {
         return matchPago && matchMes && matchTipo;
     });
  
-    // Ordenar de más nuevo a más viejo
+    // Ordenar de más nuevo a más viejo (y luego Factura descendente)
     finales.sort((a, b) => {
         if (a.fechaLimpia === "Sin Fecha") return 1;
         if (b.fechaLimpia === "Sin Fecha") return -1;
+        
         let [da, ma, ya] = a.fechaLimpia.split('/');
         let [db, mb, yb] = b.fechaLimpia.split('/');
-        return new Date(yb, mb-1, db) - new Date(ya, ma-1, da);
+        
+        let tiempoA = new Date(ya, ma-1, da).getTime();
+        let tiempoB = new Date(yb, mb-1, db).getTime();
+        
+        // 1. Fecha descendente
+        if (tiempoA !== tiempoB) {
+            return tiempoB - tiempoA;
+        }
+        
+        // 2. Factura descendente en el mismo día
+        const factA = String(a.numFactura || '').trim();
+        const factB = String(b.numFactura || '').trim();
+        
+        return factB.localeCompare(factA); // <-- Acá invertimos el orden
     });
  
     // 5. Chips de mes
@@ -547,6 +575,22 @@ function renderizarTarjetas() {
                     </div>
                 </div>
             </div>` : '';
+        // ... acá termina el selectsHTML existente : '';
+
+        // 🔥 CÓDIGO NUEVO A PEGAR 🔥
+        const tipoInformeActual = doc.tipoDoc || "Reparacion-Presu.";
+        const selectTipoDocHTML = `
+            <div style="margin-bottom:12px;">
+                <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:#94a3b8; margin-bottom:4px;">Tipo de Informe (PDF)</div>
+                <select onchange="cambiarEstado(${doc.id}, this.value, 'tipoDoc')"
+                        style="width:100%; padding:10px; border-radius:10px; border:2px solid #60a5fa;
+                               font-weight:800; color:#60a5fa; outline:none;
+                               background:#1e293b; cursor:pointer; font-size:13px;">
+                    <option value="Reparación-Presu." ${tipoInformeActual === 'Reparación-Presu.' ? 'selected' : ''}>Reparación-Presu.</option>
+                    <option value="Reparación" ${tipoInformeActual === 'Reparación' ? 'selected' : ''}>Reparación</option>
+                    <option value="Abono" ${tipoInformeActual === 'Abono' ? 'selected' : ''}>Abono</option>
+                </select>
+            </div>`;
  
         const div = document.createElement('div');
         div.className = `doc-card-v3 ${esPagado?'pagado':'pendiente'}`;
@@ -582,6 +626,7 @@ function renderizarTarjetas() {
                 ${alertaSinDesc}
                 ${maquinasHTML}
                 ${selectsHTML}
+                ${selectTipoDocHTML} 
                 <div class="doc-actions">
                     <button class="btn-doc-edit" onclick="editarDocumento(${doc.id})">✏️ Editar</button>
                     <button class="btn-doc-del"  onclick="eliminarDocumento(${doc.id})">🗑️ Eliminar</button>
@@ -889,6 +934,7 @@ function abrirVistaPresupuesto(id, btnEl) {
         cuit:    doc.cuit     || '',
         fecha:   fechaLimpia,
         total:   Number(doc.total) || 0,
+        tipoDoc: doc.tipoDoc || "Presupuesto",
         items:   (doc.items || []).map(m => ({
             desc:       m.desc      || '',
             tipo:       m.tipo      || '',
@@ -896,7 +942,7 @@ function abrirVistaPresupuesto(id, btnEl) {
             precio:     Number(m.precio) || 0,
             metros:     m.metros     || '',
             terminales: m.terminales || ''
-        }))
+        }))  
     };
 
     // ── Llamar al backend ────────────────────────────────────────
@@ -1018,22 +1064,36 @@ async function cambiarEstado(id, nuevoValor, tipoCambiado) {
     
     if (tipoCambiado === 'estado') {
         if (nuevoValor === 'Facturado / Aprobado' || nuevoValor === 'Facturado') {
-            // Guardamos el documento temporalmente y abrimos el Modal Custom
             tempDocParaFactura = { id: id, nuevoValor: nuevoValor };
-            document.getElementById('input-modal-factura').value = ""; // Limpiamos el input
-            
+            document.getElementById('input-modal-factura').value = ""; 
             const modal = document.getElementById('modalFactura');
             modal.style.display = 'flex';
             setTimeout(() => modal.classList.add('mostrar'), 10);
-            
-            return; // CORTAMOS ACÁ: No guardamos nada hasta que llene el input.
+            return; 
         } else {
-            doc.estado = nuevoValor; // Si es otro estado (Enviado, Pendiente), pasa directo
+            doc.estado = nuevoValor; 
         }
     }
     
     if (tipoCambiado === 'pagado') doc.pagado = nuevoValor;
     
+    // 🔥 MAGIA: ACTUALIZACIÓN RÁPIDA DE LA ETIQUETA SIN REINICIAR LA LISTA 🔥
+    if (tipoCambiado === 'tipoDoc') {
+        doc.tipoDoc = nuevoValor;
+        doc._tipo = clasificarDocumento(doc); // Actualiza la lógica interna
+        
+        // Busca la etiqueta exacta en la pantalla y la reemplaza por la nueva al instante
+        const badgeViejo = document.getElementById(`badge-tipo-${id}`);
+        if (badgeViejo) {
+            badgeViejo.outerHTML = badgeTipoDoc(doc._tipo, doc);
+        }
+        
+        // Guarda en Google Sheets por detrás de forma silenciosa (true)
+        ejecutarGuardadoDeEstado(doc, true);
+        return;
+    }
+    
+    // Si cambiás "Estado" o "Pago", sigue recargando la lista normal
     ejecutarGuardadoDeEstado(doc);
 }
 
@@ -1076,13 +1136,19 @@ function cerrarModalFactura() {
     renderizarTarjetas();
 }
 
-async function ejecutarGuardadoDeEstado(doc) {
+async function ejecutarGuardadoDeEstado(doc, silencioso = false) {
     mostrarMensaje('Actualizando base de datos...', 'cargando');
     try {
         await llamarAPI({ accion: "guardarDocumentoBD", payload: { hoja: HOJA_PRESUPUESTOS, datos: doc } });
         mostrarMensaje('✅ Actualizado.', 'exito');
-        renderizarTarjetas(); // Repintamos para mostrar los cambios y la nueva etiqueta
-    } catch (e) { mostrarMensaje('❌ Error.', 'error'); }
+        
+        // 🔥 Si NO es silencioso, repinta todo. Si ES silencioso, no hace nada visualmente 🔥
+        if (!silencioso) {
+            renderizarTarjetas(); 
+        }
+    } catch (e) { 
+        mostrarMensaje('❌ Error.', 'error'); 
+    }
 }
 
 function editarDocumento(id) {
@@ -1575,9 +1641,21 @@ function _lpdfFiltrarDocs() {
         if (tipo !== 'todos' && doc._tipo !== tipo) return false;
         return true;
     }).sort(function(a, b) {
+        // 1. Formato YYYYMMDD
         const fa = (a.fechaLimpia || '').split('/').reverse().join('');
         const fb = (b.fechaLimpia || '').split('/').reverse().join('');
-        return fa.localeCompare(fb);
+        
+        // 2. Fecha DESCENDENTE (más nuevos arriba)
+        const comparacionFecha = fb.localeCompare(fa);
+        if (comparacionFecha !== 0) {
+            return comparacionFecha;
+        }
+        
+        // 3. Factura DESCENDENTE (B-0082 arriba de B-0081)
+        const factA = String(a.numFactura || '').trim();
+        const factB = String(b.numFactura || '').trim();
+        
+        return factB.localeCompare(factA); // <-- Acá invertimos el orden
     });
 }
 
