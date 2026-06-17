@@ -1519,26 +1519,76 @@ function abrirAuditoria() {
 // ════════════════════════════════════════════════════════════════
 
 // Modal de configuración antes de generar
+// ════════════════════════════════════════════════════════════════
+//  📋 PDF LISTA MENSUAL — Control de facturas en papel
+// ════════════════════════════════════════════════════════════════
+
 function generarPDFListaMensual() {
-    // Crear o abrir el modal de configuración
     let modal = document.getElementById('_modal-lista-pdf');
     if (!modal) {
         modal = document.createElement('div');
         modal.id = '_modal-lista-pdf';
         modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
 
-        // Calcular rango por defecto: mes actual
         const hoy = new Date();
         const y = hoy.getFullYear(), m = String(hoy.getMonth()+1).padStart(2,'0');
         const primerDia = `${y}-${m}-01`;
         const ultimoDia = new Date(y, hoy.getMonth()+1, 0);
         const lastStr   = `${y}-${m}-${String(ultimoDia.getDate()).padStart(2,'0')}`;
 
+        // 🔥 OBTENER GIMNASIOS LIMPIOS PARA EL BUSCADOR 🔥
+        let clientesUnicos = [];
+        if (typeof documentosGuardados !== 'undefined') {
+            clientesUnicos = [...new Set(documentosGuardados
+                .map(d => (d.cliente || '').trim())
+                .filter(c => c && !c.toUpperCase().includes('IMPORTADO') && !c.toUpperCase().includes('ARCA') && !c.toUpperCase().includes('⚠️'))
+            )].sort((a,b) => a.localeCompare(b));
+        }
+
         modal.innerHTML = `
         <div style="background:var(--inf-card,#1a1f2e);border-radius:18px;width:100%;max-width:440px;
-                    border:1px solid rgba(255,255,255,0.1);padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-            <div style="font-size:18px;font-weight:900;color:var(--inf-text,#e2e8f0);margin-bottom:6px;">📋 Lista Mensual PDF</div>
-            <div style="font-size:12px;color:var(--inf-sub,#94a3b8);margin-bottom:20px;">Control de facturas para revisar en papel</div>
+                    border:1px solid rgba(255,255,255,0.1);padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,0.5);max-height:95vh;overflow-y:auto;">
+            <div style="font-size:18px;font-weight:900;color:var(--inf-text,#e2e8f0);margin-bottom:6px;">📋 Reportes PDF v2.1</div>
+            <div style="font-size:12px;color:var(--inf-sub,#94a3b8);margin-bottom:20px;">Configuración de impresión y auditoría</div>
+
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">Formato del Reporte</label>
+            <select id="_lpdf-formato-reporte" 
+                    onchange="const fmt=this.value; document.getElementById('_lpdf-contenedor-columnas').style.display=(fmt==='control'?'block':'none'); _lpdfActualizarPreview();"
+                    style="width:100%; padding:10px; border-radius:8px; border:1.5px solid rgba(255,255,255,0.1);
+                           background:#1e293b; color:white; font-size:13px; font-weight:700; margin-bottom:16px; box-sizing:border-box; cursor:pointer; outline:none;">
+                <option value="control">📊 Control de Facturación (Tabla Completa)</option>
+                <option value="clientes">🔤 Lista de Clientes y CUIT (Orden Alfabético)</option>
+            </select>
+
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">Buscar Gimnasio</label>
+            <input type="text" id="_lpdf-filtro-cliente" list="_lpdf-lista-gimnasios" 
+                   placeholder="🔍 Escribí para buscar (Dejá vacío para Todos)"
+                   oninput="_lpdfActualizarPreview()"
+                   style="width:100%; padding:10px; border-radius:8px; border:1.5px solid rgba(255,255,255,0.1);
+                          background:rgba(255,255,255,0.04); color:#60a5fa; font-size:13px; font-weight:800; margin-bottom:16px; box-sizing:border-box; outline:none;">
+            <datalist id="_lpdf-lista-gimnasios">
+                ${clientesUnicos.map(c => `<option value="${c}">`).join('')}
+            </datalist>
+
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">Accesibilidad Visual</label>
+            <div style="background:rgba(255,255,255,0.04); padding:10px 12px; border-radius:8px; border:1px dashed rgba(255,255,255,0.15); margin-bottom:16px;">
+                <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:white; font-weight:700; cursor:pointer;">
+                    <input type="checkbox" id="_lpdf-fuente-grande" style="width:18px; height:18px; accent-color:#7c3aed;">
+                    🔎 Agrandar texto para fácil lectura
+                </label>
+            </div>
+
+            <div id="_lpdf-contenedor-columnas" style="display: block; margin-bottom: 16px;">
+                <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">COLUMNAS DE ESTADO (en papel)</label>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+                    ${[['Pagado','#22c55e'],['Adeuda','#f87171'],['Reclamo','#fb923c']].map(([l,c]) =>
+                        `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--inf-text,#e2e8f0);cursor:pointer;">
+                            <input type="checkbox" id="_lpdf-col-${l.toLowerCase()}" checked
+                                style="accent-color:${c};width:16px;height:16px;"> ${l}
+                        </label>`
+                    ).join('')}
+                </div>
+            </div>
 
             <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">RANGO DE FECHAS</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
@@ -1546,13 +1596,13 @@ function generarPDFListaMensual() {
                     <div style="font-size:10px;color:var(--inf-muted,#6b7db3);margin-bottom:4px;">Desde</div>
                     <input type="date" id="_lpdf-desde" value="${primerDia}"
                         style="width:100%;padding:10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);
-                               background:rgba(255,255,255,0.06);color:var(--inf-text,#e2e8f0);font-size:13px;box-sizing:border-box;">
+                               background:rgba(255,255,255,0.06);color:var(--inf-text,#e2e8f0);font-size:13px;box-sizing:border-box; outline:none;">
                 </div>
                 <div>
                     <div style="font-size:10px;color:var(--inf-muted,#6b7db3);margin-bottom:4px;">Hasta</div>
                     <input type="date" id="_lpdf-hasta" value="${lastStr}"
                         style="width:100%;padding:10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);
-                               background:rgba(255,255,255,0.06);color:var(--inf-text,#e2e8f0);font-size:13px;box-sizing:border-box;">
+                               background:rgba(255,255,255,0.06);color:var(--inf-text,#e2e8f0);font-size:13px;box-sizing:border-box; outline:none;">
                 </div>
             </div>
 
@@ -1565,16 +1615,6 @@ function generarPDFListaMensual() {
                                font-size:12px;font-weight:700;cursor:pointer;">
                         ${l}
                     </button>`
-                ).join('')}
-            </div>
-
-            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">COLUMNAS DE ESTADO (en papel)</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
-                ${[['Pagado','#22c55e'],['Adeuda','#f87171'],['Reclamo','#fb923c']].map(([l,c]) =>
-                    `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--inf-text,#e2e8f0);cursor:pointer;">
-                        <input type="checkbox" id="_lpdf-col-${l.toLowerCase()}" checked
-                            style="accent-color:${c};width:15px;height:15px;"> ${l}
-                    </label>`
                 ).join('')}
             </div>
 
@@ -1604,7 +1644,6 @@ function generarPDFListaMensual() {
     window._lpdfTipoActual = 'todos';
     _lpdfActualizarPreview();
 
-    // Recalcular al cambiar fecha
     ['_lpdf-desde','_lpdf-hasta'].forEach(function(id) {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', _lpdfActualizarPreview);
@@ -1629,6 +1668,10 @@ function _lpdfFiltrarDocs() {
     const desde = document.getElementById('_lpdf-desde')?.value;
     const hasta = document.getElementById('_lpdf-hasta')?.value;
     const tipo  = window._lpdfTipoActual || 'todos';
+    
+    // 🔥 CAPTURA EL TEXTO MIENTRAS ESCRIBÍS 🔥
+    const textoBuscado = (document.getElementById('_lpdf-filtro-cliente')?.value || '').toLowerCase().trim();
+
     if (!Array.isArray(documentosGuardados) || !documentosGuardados.length) return [];
 
     return documentosGuardados.filter(function(doc) {
@@ -1636,26 +1679,27 @@ function _lpdfFiltrarDocs() {
         let fecha;
         if (f.length === 3) fecha = `${f[2]}-${f[1]}-${f[0]}`;
         else fecha = String(doc.fecha || '').slice(0,10);
+        
         if (desde && fecha < desde) return false;
         if (hasta && fecha > hasta) return false;
         if (tipo !== 'todos' && doc._tipo !== tipo) return false;
+        
+        // 🔥 FILTRO INTELIGENTE TIPO GOOGLE 🔥
+        if (textoBuscado) {
+            const nombreGym = String(doc.cliente || '').toLowerCase();
+            if (!nombreGym.includes(textoBuscado)) return false; 
+        }
+
         return true;
     }).sort(function(a, b) {
-        // 1. Formato YYYYMMDD
         const fa = (a.fechaLimpia || '').split('/').reverse().join('');
         const fb = (b.fechaLimpia || '').split('/').reverse().join('');
-        
-        // 2. Fecha DESCENDENTE (más nuevos arriba)
         const comparacionFecha = fb.localeCompare(fa);
-        if (comparacionFecha !== 0) {
-            return comparacionFecha;
-        }
+        if (comparacionFecha !== 0) return comparacionFecha;
         
-        // 3. Factura DESCENDENTE (B-0082 arriba de B-0081)
         const factA = String(a.numFactura || '').trim();
         const factB = String(b.numFactura || '').trim();
-        
-        return factB.localeCompare(factA); // <-- Acá invertimos el orden
+        return factB.localeCompare(factA);
     });
 }
 
@@ -1664,136 +1708,201 @@ function _lpdfActualizarPreview() {
     const el   = document.getElementById('_lpdf-preview');
     if (el) {
         const total = docs.reduce(function(s, d) { return s + Number(d.total || 0); }, 0);
-        el.innerHTML = `<strong>${docs.length} facturas</strong> en el rango · Total: <strong style="color:#60a5fa;">$${Math.round(total).toLocaleString('es-AR')}</strong>`;
+        el.innerHTML = `<strong>${docs.length} facturas</strong> encontradas · Total: <strong style="color:#60a5fa;">$${Math.round(total).toLocaleString('es-AR')}</strong>`;
     }
 }
 
 async function _generarListaPDFEjecutar() {
-    const docs  = _lpdfFiltrarDocs();
-    if (!docs.length) { mostrarMensaje('No hay documentos en el rango seleccionado.', 'error'); return; }
+    let docs = _lpdfFiltrarDocs();
+
+    if (!docs.length) { 
+        mostrarMensaje('No hay documentos que coincidan con la búsqueda o filtros.', 'error'); 
+        return; 
+    }
 
     const desde = document.getElementById('_lpdf-desde')?.value || '';
     const hasta = document.getElementById('_lpdf-hasta')?.value || '';
+    const formatoReporte = document.getElementById('_lpdf-formato-reporte')?.value || 'control';
+    const fuenteGrande   = document.getElementById('_lpdf-fuente-grande')?.checked;
     const colPagado   = document.getElementById('_lpdf-col-pagado')?.checked;
     const colAdeuda   = document.getElementById('_lpdf-col-adeuda')?.checked;
     const colReclamo  = document.getElementById('_lpdf-col-reclamo')?.checked;
+    
+    // Captura para el cartel superior del PDF
+    const textoBuscado = document.getElementById('_lpdf-filtro-cliente')?.value.trim();
+    const subTituloCliente = textoBuscado ? `Filtro: "${textoBuscado}"` : 'Todos los Gimnasios';
+    
     document.getElementById('_modal-lista-pdf')?.remove();
+    mostrarMensaje('⏳ Generando PDF...', 'cargando');
 
-    mostrarMensaje('⏳ Generando PDF lista...', 'cargando');
+    const szBody    = fuenteGrande ? '15px' : '11px';
+    const szHead    = fuenteGrande ? '14px' : '10px';
+    const szTitle   = fuenteGrande ? '25px' : '20px';
+    const szSub     = fuenteGrande ? '15px' : '12px';
+    const szMeta    = fuenteGrande ? '13px' : '9px';
+    const paddingTd = fuenteGrande ? '12px 10px' : '7px 8px';
 
-    // Construir HTML del PDF
-    const columnas = [colPagado && 'Pagado', colAdeuda && 'Adeuda', colReclamo && 'Reclamo'].filter(Boolean);
-    const totalGeneral = docs.reduce(function(s, d) { return s + Number(d.total || 0); }, 0);
-    const tituloRango  = desde && hasta
-        ? `${desde.split('-').reverse().join('/')} al ${hasta.split('-').reverse().join('/')}`
-        : 'Todos los registros';
+    let tablaHTML = '';
 
-    const headerCols = columnas.map(function(c) {
-        return `<th style="width:60px;text-align:center;">${c} <span style="font-size:9px;font-weight:400;">(✓/✗)</span></th>`;
-    }).join('');
+    if (formatoReporte === 'clientes') {
+        let clientesLimpios = [];
+        let registradosVistos = new Set();
 
-    const filas = docs.map(function(doc, i) {
-        const bgRow    = i % 2 === 0 ? '#ffffff' : '#f8f9fc';
-        const factNum  = String(doc.numFactura || '—');
-        const tipoBadge = doc._tipo === 'abono' ? '#1d4ed8' : doc._tipo === 'reparacion' ? '#15803d' : doc._tipo === 'presup_enviado' ? '#6b21a8' : '#92400e';
-        const tipoLabel = doc._tipo === 'abono' ? 'Abono' : doc._tipo === 'reparacion' ? 'Rep.' : doc._tipo === 'presup_enviado' ? 'Env.' : '?';
-        const checkCols = columnas.map(function() {
-            return `<td style="text-align:center;border-bottom:1px solid #e5e7eb;padding:7px 4px;">
-                        <div style="width:16px;height:16px;border:1.5px solid #9ca3af;border-radius:3px;margin:0 auto;"></div>
-                    </td>`;
-        }).join('');
+        docs.forEach(doc => {
+            const nombreDoc = String(doc.cliente || "").trim();
+            const nombreUpper = nombreDoc.toUpperCase();
+            const cuitDoc = String(doc.cuit || "").replace(/\D/g, "");
 
-        return `<tr style="background:${bgRow};">
-            <td style="padding:7px 8px;font-size:10px;color:#6b7280;border-bottom:1px solid #e5e7eb;text-align:center;">${i+1}</td>
-            <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">
-                <div style="font-size:11px;font-weight:700;color:#111827;">${doc.cliente || '—'}</div>
-                <div style="font-size:9px;color:#6b7280;">${doc.cuit || ''}</div>
-            </td>
-            <td style="padding:7px 8px;border-bottom:1px solid #e5e7eb;">
-                <span style="display:inline-block;background:${tipoBadge}1a;color:${tipoBadge};border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;">${tipoLabel}</span>
-            </td>
-            <td style="padding:7px 8px;font-size:11px;font-weight:700;color:#1e3a8a;border-bottom:1px solid #e5e7eb;">${factNum}</td>
-            <td style="padding:7px 8px;font-size:12px;font-weight:900;color:#1d4ed8;text-align:right;border-bottom:1px solid #e5e7eb;">
-                $${Number(doc.total || 0).toLocaleString('es-AR')}
-            </td>
-            <td style="padding:7px 8px;font-size:10px;color:#374151;text-align:center;border-bottom:1px solid #e5e7eb;">${doc.fechaLimpia || ''}</td>
-            ${checkCols}
-        </tr>`;
-    }).join('');
+            if (!nombreDoc || nombreUpper.includes("IMPORTADO") || nombreUpper.includes("ARCA") || nombreUpper.includes("⚠️")) return;
+
+            const claveUnica = cuitDoc || nombreUpper;
+            if (!registradosVistos.has(claveUnica)) {
+                registradosVistos.add(claveUnica);
+                clientesLimpios.push(doc);
+            }
+        });
+
+        docs = clientesLimpios;
+        docs.sort((a, b) => (a.cliente || '').localeCompare(b.cliente || ''));
+
+        tablaHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:40px; text-align:center; font-size:${szHead}; padding:${paddingTd};">#</th>
+                    <th style="font-size:${szHead}; padding:${paddingTd};">Cliente / Gimnasio</th>
+                    <th style="width:160px; font-size:${szHead}; padding:${paddingTd};">CUIT</th>
+                    <th style="width:100px; text-align:center; font-size:${szHead}; padding:${paddingTd};">Tipo Factura</th>
+                    <th style="width:130px; text-align:center; font-size:${szHead}; padding:${paddingTd};">Última Factura</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${docs.map((doc, i) => {
+                    const bgRow = i % 2 === 0 ? '#ffffff' : '#f8f9fc';
+                    const factNum = String(doc.numFactura || '—');
+                    let tipoLetra = 'B';
+                    if (factNum.toUpperCase().includes('A')) tipoLetra = 'A';
+                    else if (factNum.toUpperCase().includes('NC')) tipoLetra = 'NC';
+
+                    return `
+                    <tr style="background:${bgRow};">
+                        <td style="padding:${paddingTd}; font-size:${szBody}; color:#6b7280; text-align:center; border-bottom:1px solid #e5e7eb;">${i+1}</td>
+                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:700; color:#111827; border-bottom:1px solid #e5e7eb;">${doc.cliente || '—'}</td>
+                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:700; color:#475467; border-bottom:1px solid #e5e7eb;">${doc.cuit || '—'}</td>
+                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:900; text-align:center; border-bottom:1px solid #e5e7eb;">
+                            <span style="background:${tipoLetra==='A'?'#10b981':'#3b82f6'}22; color:${tipoLetra==='A'?'#047857':'#1d4ed8'}; padding:3px 10px; border-radius:4px;">${tipoLetra}</span>
+                        </td>
+                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:700; text-align:center; color:#374151; border-bottom:1px solid #e5e7eb;">${factNum}</td>
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>`;
+    } else {
+        const columnasSeleccionadas = [colPagado && 'Pagado', colAdeuda && 'Adeuda', colReclamo && 'Reclamo'].filter(Boolean);
+        const headerColsHtml = columnasSeleccionadas.map(c => `<th style="width:70px; text-align:center; font-size:${szHead}; padding:${paddingTd};">${c} <span style="font-size:${fuenteGrande?'10px':'8px'}; font-weight:400; display:block;">(✓/✗)</span></th>`).join('');
+
+        tablaHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:28px; text-align:center; font-size:${szHead}; padding:${paddingTd};">#</th>
+                    <th>Cliente / CUIT</th>
+                    <th style="width:45px;">Tipo</th>
+                    <th style="width:80px;">Factura</th>
+                    <th style="width:85px; text-align:right;">Monto</th>
+                    <th style="width:62px; text-align:center;">Fecha</th>
+                    ${headerColsHtml}
+                </tr>
+            </thead>
+            <tbody>
+                ${docs.map((doc, i) => {
+                    const bgRow = i % 2 === 0 ? '#ffffff' : '#f8f9fc';
+                    const factNum = String(doc.numFactura || '—');
+                    const tipoBadge = doc._tipo === 'abono' ? '#1d4ed8' : doc._tipo === 'reparacion' ? '#15803d' : doc._tipo === 'presup_enviado' ? '#6b21a8' : '#92400e';
+                    const tipoLabel = doc._tipo === 'abono' ? 'Abono' : doc._tipo === 'reparacion' ? 'Rep.' : doc._tipo === 'presup_enviado' ? 'Env.' : '?';
+
+                    const checkBoxesHtml = columnasSeleccionadas.map(() => 
+                        `<td style="text-align:center; border-bottom:1px solid #e5e7eb; padding:${paddingTd};">
+                            <div style="width:${fuenteGrande?'20px':'15px'}; height:${fuenteGrande?'20px':'15px'}; border:1.5px solid #9ca3af; border-radius:4px; margin:0 auto; background:#fff;"></div>
+                        </td>`
+                    ).join('');
+
+                    return `
+                    <tr style="background:${bgRow};">
+                        <td style="padding:${paddingTd}; font-size:${szBody}; color:#6b7280; text-align:center; border-bottom:1px solid #e5e7eb;">${i+1}</td>
+                        <td style="padding:${paddingTd}; border-bottom:1px solid #e5e7eb;">
+                            <div style="font-size:${szBody}; font-weight:700; color:#111827;">${doc.cliente || '—'}</div>
+                            <div style="font-size:${szMeta}; color:#6b7280;">${doc.cuit || ''}</div>
+                        </td>
+                        <td style="padding:${paddingTd}; border-bottom:1px solid #e5e7eb;">
+                            <span style="display:inline-block; background:${tipoBadge}1a; color:${tipoBadge}; border-radius:4px; padding:1px 5px; font-size:${szMeta}; font-weight:700;">${tipoLabel}</span>
+                        </td>
+                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:700; color:#1e3a8a; border-bottom:1px solid #e5e7eb;">${factNum}</td>
+                        <td style="padding:${paddingTd}; font-size:${fuenteGrande?'16px':'12px'}; font-weight:900; color:#1d4ed8; text-align:right; border-bottom:1px solid #e5e7eb;">
+                            $${Number(doc.total || 0).toLocaleString('es-AR')}
+                        </td>
+                        <td style="padding:${paddingTd}; font-size:${szBody}; color:#374151; text-align:center; border-bottom:1px solid #e5e7eb;">${doc.fechaLimpia || ''}</td>
+                        ${checkBoxesHtml}
+                    </tr>`;
+                }).join('')}
+            </tbody>
+        </table>`;
+    }
+
+    const totalGeneral = docs.reduce((s, d) => s + Number(d.total || 0), 0);
+    const tituloRango  = desde && hasta ? `${desde.split('-').reverse().join('/')} al ${hasta.split('-').reverse().join('/')}` : 'Todos los registros';
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
     <style>
         @page { size: A4 portrait; margin: 15mm 12mm; }
-        body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1f2937; margin:0; }
-        table { width: 100%; border-collapse: collapse; }
+        body { font-family: 'Arial', sans-serif; font-size: ${szBody}; color: #1f2937; margin:0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         thead tr { background: #1e40af; color: white; }
-        thead th { padding: 9px 8px; font-size: 10px; font-weight: 700; text-align: left; }
-        .firma-box { border: 1.5px solid #d1d5db; border-radius: 6px; padding: 6px 10px; text-align: center; background: #f9fafb; }
-        .total-row td { font-weight: 900; background: #eff6ff !important; color: #1e3a8a; }
+        thead th { font-weight: 700; text-align: left; padding: 8px; }
+        .firma-box { border: 1.5px solid #d1d5db; border-radius: 6px; padding: 8px; text-align: center; background: #f9fafb; }
     </style>
     </head><body>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1e40af;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; padding-bottom:12px; border-bottom:2px solid #1e40af;">
         <div>
-            <div style="font-size:20px;font-weight:900;color:#1e40af;">Support Fitness</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px;">Servicio Técnico para Gimnasios</div>
+            <div style="font-size:${szTitle}; font-weight:900; color:#1e40af;">Support Fitness</div>
+            <div style="font-size:${szSub}; color:#6b7280; margin-top:2px;">Servicio Técnico para Gimnasios</div>
         </div>
         <div style="text-align:right;">
-            <div style="font-size:14px;font-weight:800;color:#111827;">📋 Control de Facturación</div>
-            <div style="font-size:11px;color:#6b7280;margin-top:3px;">${tituloRango}</div>
-            <div style="font-size:10px;color:#9ca3af;margin-top:2px;">Generado: ${new Date().toLocaleDateString('es-AR')}</div>
+            <div style="font-size:${szSub}; font-weight:800; color:#111827;">${formatoReporte==='clientes'?'📋 Lista de Clientes y CUIT':'📋 Control de Facturación'}</div>
+            <div style="font-size:${szBody}; font-weight:800; color:#4c1d95; margin-top:4px; background:#f3e8ff; padding:2px 8px; border-radius:4px; display:inline-block; border: 1px solid #d8b4fe;">${subTituloCliente}</div>
+            <div style="font-size:${szBody}; color:#6b7280; margin-top:4px;">${tituloRango}</div>
+            <div style="font-size:${szMeta}; color:#9ca3af; margin-top:2px;">Generado: ${new Date().toLocaleDateString('es-AR')}</div>
         </div>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th style="width:28px;text-align:center;">#</th>
-                <th>Cliente / CUIT</th>
-                <th style="width:45px;">Tipo</th>
-                <th style="width:80px;">Factura</th>
-                <th style="width:85px;text-align:right;">Monto</th>
-                <th style="width:62px;text-align:center;">Fecha</th>
-                ${headerCols}
-            </tr>
-        </thead>
-        <tbody>
-            ${filas}
-            <tr class="total-row">
-                <td colspan="4" style="padding:9px 8px;text-align:right;font-size:11px;border-top:2px solid #1e40af;">
-                    TOTAL — ${docs.length} facturas
-                </td>
-                <td style="padding:9px 8px;font-size:14px;font-weight:900;text-align:right;color:#1e3a8a;border-top:2px solid #1e40af;">
-                    $${Math.round(totalGeneral).toLocaleString('es-AR')}
-                </td>
-                <td colspan="${columnas.length + 1}" style="border-top:2px solid #1e40af;"></td>
-            </tr>
-        </tbody>
-    </table>
+    ${tablaHTML}
 
-    <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-        ${['Revisado por','Aprobado por','Fecha de revisión'].map(function(l) {
-            return `<div class="firma-box"><div style="font-size:9px;color:#6b7280;margin-bottom:24px;">${l}</div><div style="border-top:1px solid #9ca3af;padding-top:4px;font-size:9px;color:#d1d5db;">Firma / Aclaración</div></div>`;
-        }).join('')}
+    <div style="text-align:right; margin-top:0px; padding:10px; background:#eff6ff; border-bottom:2px solid #1e40af; font-size:${szBody}; font-weight:900; color:#1e3a8a;">
+        TOTAL EN RANGO: $${Math.round(totalGeneral).toLocaleString('es-AR')} (${docs.length} Documentos)
+    </div>
+
+    <div style="margin-top:30px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+        ${['Revisado por','Aprobado por','Fecha de revisión'].map(l => 
+            `<div class="firma-box"><div style="font-size:${szMeta}; color:#6b7280; margin-bottom:30px;">${l}</div><div style="border-top:1px solid #9ca3af; padding-top:4px; font-size:${szMeta}; color:#9ca3af;">Firma / Aclaración</div></div>`
+        ).join('')}
     </div>
     </body></html>`;
 
-    // Generar PDF desde HTML
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url  = URL.createObjectURL(blob);
     const win  = window.open(url, '_blank');
     if (win) {
         win.onload = function() {
-            setTimeout(function() { win.print(); URL.revokeObjectURL(url); }, 600);
+            setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 600);
         };
     } else {
-        // Fallback: descarga directa del HTML
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Lista_Facturacion_${desde}_${hasta}.html`;
+        a.download = `Reporte_${textoBuscado ? textoBuscado.replace(/\s+/g, '_') : 'General'}_${desde}_${hasta}.html`;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
     }
-    mostrarMensaje(`✅ Lista generada — ${docs.length} facturas · $${Math.round(totalGeneral).toLocaleString('es-AR')}`, 'exito');
+    mostrarMensaje(`✅ Reporte generado exitosamente.`, 'exito');
 }
