@@ -1518,11 +1518,6 @@ function abrirAuditoria() {
 //  📋 PDF LISTA MENSUAL — Control de facturas en papel
 // ════════════════════════════════════════════════════════════════
 
-// Modal de configuración antes de generar
-// ════════════════════════════════════════════════════════════════
-//  📋 PDF LISTA MENSUAL — Control de facturas en papel
-// ════════════════════════════════════════════════════════════════
-
 function generarPDFListaMensual() {
     let modal = document.getElementById('_modal-lista-pdf');
     if (!modal) {
