@@ -8,7 +8,7 @@
 
 // IMPORTANTE: Cambiar este string cada vez que se suban cambios a producción.
 // Formato: 'sf-YYYYMMDD-HHMM' — evita que los usuarios vean versión vieja cacheada.
-const CACHE_VER  = 'sf-20260629-0003';
+const CACHE_VER  = 'sf-20260708-0003';
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
 // Assets que se intentan precargar al instalar el SW.

@@ -839,7 +839,12 @@
         <!-- ══════ ABONOS ══════ -->
         <div id="seccion-abonos" style="display:none;">
             <div class="mes-selector-wrap">
-                <div class="mes-selector-label">📅 Mes de facturación</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div class="mes-selector-label" style="margin-bottom:0;">📅 Mes de facturación</div>
+                    <button onclick="abrirModalAumentoMasivo()" style="background:rgba(245,158,11,0.15); color:#b45309; border:1.5px solid rgba(245,158,11,0.4); padding:4px 10px; border-radius:8px; font-weight:900; font-size:11px; cursor:pointer; transition:all 0.2s;">
+                        📈 Aumento Masivo IPC
+                    </button>
+                </div>
                 <input type="month" id="selector-mes-abono" onchange="renderizarAbonos()">
             </div>
             <div class="sector-tabs">

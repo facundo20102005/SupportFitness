@@ -692,3 +692,215 @@ async function enviarMailRapidoAbono(orden, idMes) {
         mostrarMensaje('Error al preparar el correo. Intentá de nuevo.', 'error');
     }
 }
+// =========================================================================
+// 🔥 AUMENTO MASIVO DE PRECIOS POR IPC 🔥
+// =========================================================================
+
+function abrirModalAumentoMasivo() {
+    let modal = document.getElementById('modal-aumento-masivo');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-aumento-masivo';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:flex; align-items:center; justify-content:center; padding:15px; box-sizing:border-box; backdrop-filter: blur(3px);';
+        document.body.appendChild(modal);
+    }
+
+    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const opcionesMeses = meses.map(m => `<option value="${m}">${m}</option>`).join('');
+
+    // Sugerir mes efectivo (el mes actual + 1 por defecto)
+    const hoy = new Date();
+    let sigMes = hoy.getMonth() + 2; 
+    let anioEff = hoy.getFullYear();
+    if (sigMes > 12) { sigMes -= 12; anioEff++; }
+    const mesEfectivoSugerido = String(sigMes).padStart(2, '0') + '/' + anioEff;
+
+    modal.innerHTML = `
+        <div style="background:var(--inf-card); border: 1px solid var(--inf-border); padding:20px; border-radius:14px; width:100%; max-width:600px; max-height:90vh; display:flex; flex-direction:column; box-shadow:var(--inf-shadow-md);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--inf-border); padding-bottom:12px; margin-bottom:12px;">
+                <h2 style="margin:0; color:var(--inf-amarillo); font-size:18px; font-weight:900;">📈 Aumento Masivo (IPC)</h2>
+                <span onclick="cerrarModalAumentoMasivo()" style="cursor:pointer; color:var(--inf-rojo); font-size:24px; font-weight:bold; line-height:1;">✖</span>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+                <div style="flex:1; min-width:140px;">
+                    <label style="font-size:11px; font-weight:bold; color:var(--inf-sub);">Filtrar por Mes de Aviso:</label>
+                    <select id="masivo-mes-aviso" onchange="renderizarListaAumentoMasivo()" style="width:100%; padding:8px; border-radius:8px; border:2px solid var(--inf-border); background:var(--inf-bg); color:var(--inf-text); font-weight:bold; outline:none; margin-top:4px;">
+                        <option value="Todos">Mostrar Todos</option>
+                        ${opcionesMeses}
+                    </select>
+                </div>
+                <div style="flex:1; min-width:140px;">
+                    <label style="font-size:11px; font-weight:bold; color:var(--inf-sub);">Aplica desde (MM/YYYY):</label>
+                    <input type="text" id="masivo-mes-efectivo" value="${mesEfectivoSugerido}" maxlength="7" oninput="this.value=this.value.replace(/[^0-9\\/]/g,''); if(this.value.length===2&&!this.value.includes('/'))this.value+='/'" style="width:100%; padding:8px; border-radius:8px; border:2px solid var(--inf-azul); background:var(--inf-bg); color:var(--inf-text); font-weight:bold; text-align:center; outline:none; margin-top:4px;">
+                </div>
+            </div>
+
+            <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:12px; border-radius:10px; margin-bottom:15px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div style="flex:1; min-width:150px;">
+                    <label style="font-size:11px; font-weight:bold; color:var(--inf-amarillo);">Porcentaje General:</label>
+                    <div style="display:flex; align-items:center; gap:5px; margin-top:4px;">
+                        <input type="number" id="masivo-porcentaje" placeholder="Ej: 15" style="width:70px; padding:8px; border-radius:8px; border:2px solid rgba(245,158,11,0.4); background:var(--inf-bg); color:var(--inf-text); font-weight:bold; text-align:center; outline:none;">
+                        <span style="font-weight:bold; color:var(--inf-amarillo);">%</span>
+                    </div>
+                </div>
+                <button onclick="aplicarPorcentajeMasivo()" style="background:var(--inf-amarillo); color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer; height:fit-content; transition:0.2s; white-space:nowrap;">
+                    ⚡ Aplicar % a la lista
+                </button>
+            </div>
+
+            <div style="flex:1; overflow-y:auto; border:1px solid var(--inf-border); border-radius:10px; background:var(--inf-bg); padding:0;" id="masivo-lista-gyms">
+                </div>
+
+            <button onclick="guardarAumentoMasivo()" style="width:100%; background:linear-gradient(135deg,var(--inf-verde),#0b7a42); color:white; border:none; padding:14px; border-radius:10px; font-weight:900; font-size:15px; cursor:pointer; margin-top:15px; box-shadow:0 4px 12px rgba(15,157,88,0.3);">
+                💾 Guardar Cambios Seleccionados
+            </button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+    
+    // Autoseleccionar el mes actual en el filtro al abrir
+    document.getElementById('masivo-mes-aviso').value = meses[hoy.getMonth()];
+    renderizarListaAumentoMasivo();
+}
+
+function cerrarModalAumentoMasivo() {
+    const modal = document.getElementById('modal-aumento-masivo');
+    if (modal) modal.style.display = 'none';
+}
+
+function renderizarListaAumentoMasivo() {
+    const contenedor = document.getElementById('masivo-lista-gyms');
+    const filtroMes = document.getElementById('masivo-mes-aviso').value;
+    const hoy = new Date();
+    
+    // Filtramos la lista según el mes de aviso que tienen configurado
+    let filtrados = listaAbonosBase;
+    if (filtroMes !== "Todos") {
+        filtrados = listaAbonosBase.filter(a => String(a.mesIncrem).trim().toLowerCase() === filtroMes.toLowerCase());
+    }
+
+    if (filtrados.length === 0) {
+        contenedor.innerHTML = `<div style="padding:20px; text-align:center; color:var(--inf-muted); font-weight:bold;">No hay gimnasios configurados con aviso en ${filtroMes}.</div>`;
+        return;
+    }
+
+    let html = `<div style="padding:10px; background:var(--inf-bg); font-size:11px; font-weight:bold; color:var(--inf-sub); display:flex; justify-content:space-between; border-bottom:1px solid var(--inf-border);">
+                    <span>SELECCIONAR / GIMNASIO</span>
+                    <span>NUEVO PRECIO (ARS)</span>
+                </div>`;
+
+    filtrados.sort((a,b) => a.orden - b.orden).forEach(a => {
+        // Obtenemos el precio vigente actual de este gimnasio
+        const precioActual = getPrecioParaMes(a, hoy.getMonth() + 1, hoy.getFullYear());
+        
+        html += `
+            <div class="item-masivo-gym" data-orden="${a.orden}" data-precio-base="${precioActual}" style="display:flex; align-items:center; justify-content:space-between; padding:12px 10px; border-bottom:1px solid var(--inf-border); background:var(--inf-card);">
+                <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
+                    <input type="checkbox" id="chk-masivo-${a.orden}" class="chk-masivo-item" checked style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
+                    <div style="display:flex; flex-direction:column; min-width:0;">
+                        <label for="chk-masivo-${a.orden}" style="font-weight:bold; font-size:13px; color:var(--inf-text); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${a.gym}</label>
+                        <span style="font-size:11px; color:var(--inf-azul); font-weight:bold;">Actual: $${precioActual.toLocaleString('es-AR')}</span>
+                    </div>
+                </div>
+                <input type="number" id="inp-masivo-precio-${a.orden}" value="${precioActual}" style="width:90px; padding:6px; border:2px solid var(--inf-border); background:var(--inf-bg); color:var(--inf-text); border-radius:6px; font-weight:bold; text-align:right; outline:none; flex-shrink:0; transition:border-color 0.2s;">
+            </div>
+        `;
+    });
+
+    contenedor.innerHTML = html;
+}
+
+function aplicarPorcentajeMasivo() {
+    const porc = parseFloat(document.getElementById('masivo-porcentaje').value);
+    if (isNaN(porc) || porc <= 0) {
+        mostrarMensaje('Ingresá un porcentaje válido mayor a 0', 'error');
+        return;
+    }
+
+    const items = document.querySelectorAll('.item-masivo-gym');
+    items.forEach(item => {
+        const precioBase = parseFloat(item.getAttribute('data-precio-base'));
+        const inpNuevo = document.getElementById('inp-masivo-precio-' + item.getAttribute('data-orden'));
+        const chk = document.getElementById('chk-masivo-' + item.getAttribute('data-orden'));
+        
+        if (chk.checked) {
+            // Aumento matemático: Precio + Porcentaje
+            let nuevoPrecio = precioBase * (1 + (porc / 100));
+            
+            // Redondea para arriba eliminando decimales (ej: 1450.20 -> 1451)
+            nuevoPrecio = Math.ceil(nuevoPrecio); 
+            
+            inpNuevo.value = nuevoPrecio;
+            
+            // Animación visual de feedback respetando la UI
+            inpNuevo.style.borderColor = 'var(--inf-verde)';
+            setTimeout(() => inpNuevo.style.borderColor = 'var(--inf-border)', 800);
+        }
+    });
+}
+
+async function guardarAumentoMasivo() {
+    const desde = document.getElementById('masivo-mes-efectivo').value.trim();
+    if (!/^\d{2}\/\d{4}$/.test(desde)) {
+        mostrarMensaje('El formato de fecha debe ser MM/YYYY', 'error');
+        return;
+    }
+
+    const items = document.querySelectorAll('.item-masivo-gym');
+    let aumentos = [];
+
+    items.forEach(item => {
+        const orden = parseInt(item.getAttribute('data-orden'));
+        const chk = document.getElementById('chk-masivo-' + orden);
+        const precioNuevo = parseFloat(document.getElementById('inp-masivo-precio-' + orden).value);
+
+        if (chk.checked && !isNaN(precioNuevo)) {
+            aumentos.push({
+                orden: orden,
+                desde: desde,
+                precio: precioNuevo
+            });
+        }
+    });
+
+    if (aumentos.length === 0) {
+        mostrarMensaje('No hay ningún gimnasio seleccionado para aumentar.', 'error');
+        return;
+    }
+
+    const ok = await modalConfirmar({
+        titulo: 'Guardar Aumentos',
+        mensaje: `Se actualizará el precio de ${aumentos.length} gimnasios a partir del mes ${desde}.\n¿Estás seguro?`,
+        icono: '💾', color: '#0f9d58', btnOk: 'Sí, aplicar', btnCancel: 'Cancelar'
+    });
+    if (!ok) return;
+
+    cerrarModalAumentoMasivo();
+    mostrarMensaje('Aplicando aumentos masivos... ⏳', 'cargando');
+
+    try {
+        // Enviar el paquete entero a la nueva función del backend
+        await llamarAPI({ accion: "actualizarPreciosMasivos", payload: { aumentos: aumentos } });
+        
+        // Actualizar la lista en memoria para no tener que recargar toda la página
+        aumentos.forEach(aum => {
+            const abono = listaAbonosBase.find(a => a.orden === aum.orden);
+            if (abono) {
+                if (!abono.preciosHistorial) abono.preciosHistorial = [];
+                abono.preciosHistorial = abono.preciosHistorial.filter(e => e.desde !== aum.desde);
+                abono.preciosHistorial.push({ desde: aum.desde, precio: aum.precio });
+                abono.preciosHistorial.sort((a, b) => {
+                    const [am, ay] = a.desde.split('/').map(Number);
+                    const [bm, by] = b.desde.split('/').map(Number);
+                    return (ay * 12 + am) - (by * 12 + bm);
+                });
+            }
+        });
+
+        mostrarMensaje(`✅ ${aumentos.length} precios actualizados correctamente.`, 'exito');
+        renderizarAbonos(); // Refresca las tarjetas visualmente
+    } catch(e) {
+        mostrarMensaje('❌ Error al guardar masivamente: ' + e.message, 'error');
+    }
+}

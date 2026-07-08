@@ -417,29 +417,35 @@ function _normalizarNombreGym(str) {
 function _scoreGym(a, b) {
     const na = _normalizarNombreGym(a);
     const nb = _normalizarNombreGym(b);
- 
-    // Coincidencia exacta después de normalizar
+
+    // 1. Coincidencia exacta rápida
     if (na === nb) return 1.0;
- 
-    // Palabras significativas (longitud > 3 para evitar "de", "la", "los")
-    const wordsA = na.split(' ').filter(w => w.length > 3 && isNaN(w));
-    const wordsB = nb.split(' ').filter(w => w.length > 3 && isNaN(w));
-    // Números exactos (ej: "1709", "3650") también son significativos
+
+    // 2. NUEVO: Si un nombre está completamente adentro del otro 
+    // (Ej: "los alisos" adentro de "barrios los alisos")
+    if (na.includes(nb) && nb.length >= 5) return 0.9;
+    if (nb.includes(na) && na.length >= 5) return 0.9;
+
+    // 3. Búsqueda por palabras
+    // Bajamos a > 2 para NO ignorar palabras clave de 3 letras como "Los", "Sol", "Sur"
+    const wordsA = na.split(' ').filter(w => w.length > 2 && isNaN(w));
+    const wordsB = nb.split(' ').filter(w => w.length > 2 && isNaN(w));
+    
+    // Números exactos (ej: "1709", "3650") valen doble
     const numsA  = na.split(' ').filter(w => !isNaN(w) && w.length > 0);
     const numsB  = nb.split(' ').filter(w => !isNaN(w) && w.length > 0);
- 
+
     if (wordsA.length === 0 && numsA.length === 0) return 0;
     if (wordsB.length === 0 && numsB.length === 0) return 0;
- 
-    // Coincidencias de palabras
-    const matchWords = wordsA.filter(w => wordsB.includes(w)).length;
-    // Coincidencias de números (peso alto: "1709" es muy identificatorio)
+
+    // 4. NUEVO: Coincidencias tolerando singulares y plurales (ej: "barrio" ahora matchea "barrios")
+    const matchWords = wordsA.filter(wa => wordsB.some(wb => wa.includes(wb) || wb.includes(wa))).length;
     const matchNums  = numsA.filter(n => numsB.includes(n)).length;
- 
-    const totalA = wordsA.length + numsA.length * 2; // Números valen doble
+
+    const totalA = wordsA.length + numsA.length * 2; 
     const totalB = wordsB.length + numsB.length * 2;
     const score  = (matchWords + matchNums * 2) / Math.max(totalA, totalB);
- 
+
     return score;
 }
  
@@ -449,130 +455,93 @@ function _scoreGym(a, b) {
 // Bajar a 0.60 si algunos gyms con nombres muy distintos no se detectan.
 const _UMBRAL_REMITO = 0.70;
  
-/**
- * Verifica si el gimnasio seleccionado necesita remito u OC.
- * Muestra un toast naranja prominente + aviso inline.
- *
- * REEMPLAZA la función _verificarRemitoGym() del app.js original.
- */
+window.gymRequiereRemito = false; // Variable global para bloquear el envío
+
 function _verificarRemitoGym(gymNombre) {
     // Limpiar avisos anteriores
     ['aviso-remito', 'aviso-oc', 'toast-remito'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.remove();
     });
- 
+
+    window.gymRequiereRemito = false; // Resetear siempre por las dudas
+
     if (!gymNombre || !gymNombre.trim()) return;
- 
-    // Si los abonos todavía no cargaron, reintentar en 2 segundos
+
     if (!window.listaAbonosGlobal || window.listaAbonosGlobal.length === 0) {
         setTimeout(() => _verificarRemitoGym(gymNombre), 2000);
         return;
     }
- 
-    // Encontrar el abono con mejor score de similitud
-    let mejorMatch  = null;
-    let mejorScore  = 0;
- 
+
+    let mejorMatch = null;
+    let mejorScore = 0;
+
     window.listaAbonosGlobal.forEach(abono => {
         const score = _scoreGym(gymNombre, String(abono.gym || ''));
         if (score > mejorScore) {
-            mejorScore  = score;
-            mejorMatch  = abono;
+            mejorScore = score;
+            mejorMatch = abono;
         }
     });
- 
-    // No hay match suficientemente bueno → no mostrar nada
+
     if (!mejorMatch || mejorScore < _UMBRAL_REMITO) return;
- 
-    const necesitaRemito = mejorMatch.pideRemito === true;
-    const necesitaOC     = mejorMatch.pideOC === true;
- 
-    // Sin requisitos especiales → no hacer nada
+
+    // Soporta tanto que la base de datos devuelva un booleano (true) como el texto "SI" de la columna F
+    const valRemito = mejorMatch.pideRemito;
+    const necesitaRemito = (valRemito === true || String(valRemito).toUpperCase().trim() === "SI");
+    const necesitaOC = mejorMatch.pideOC === true || String(mejorMatch.pideOC).toUpperCase().trim() === "SI";
+
     if (!necesitaRemito && !necesitaOC) return;
- 
-    // ── Aviso inline (debajo del buscador) ───────────────────
+
+    // Si necesita remito, activamos la trampa obligatoria
+    if (necesitaRemito) {
+        window.gymRequiereRemito = true;
+    }
+
+    // ── Aviso inline fijo (debajo del buscador) ──
     const aviso = document.createElement("div");
     aviso.id = "aviso-remito";
-    aviso.style.cssText = [
-        "background:#fff3e0;",
-        "border-left:4px solid #ff9800;",
-        "border-radius:10px;",
-        "padding:14px 16px;",
-        "margin-top:12px;",
-        "display:flex;",
-        "align-items:flex-start;",
-        "gap:12px;",
-    ].join(" ");
- 
+    aviso.style.cssText = "background:#fff3e0; border-left:4px solid #ff9800; border-radius:10px; padding:14px 16px; margin-top:12px; display:flex; align-items:flex-start; gap:12px;";
+
     let textoReq = [];
-    if (necesitaRemito) textoReq.push(`<strong>REMITO firmado</strong>`);
-    if (necesitaOC)     textoReq.push(`<strong>ORDEN DE COMPRA</strong>`);
- 
+    if (necesitaRemito) textoReq.push(`<strong>REMITO firmado (OBLIGATORIO)</strong>`);
+    if (necesitaOC) textoReq.push(`<strong>ORDEN DE COMPRA</strong>`);
+
     aviso.innerHTML = `
         <span style="font-size:24px; flex-shrink:0;">📋</span>
         <div>
             <div style="font-weight:900; font-size:14px; color:#e65100; margin-bottom:5px;">
-                ⚠️ Documentación requerida
+                ⚠️ Documentación OBLIGATORIA
             </div>
             <div style="font-size:13px; color:#bf360c; line-height:1.6;">
-                <strong>${gymNombre}</strong> exige: ${textoReq.join(' y ')}.<br>
-                <u>Fotografialo antes de enviar y adjuntalo como foto.</u>
+                El gimnasio <strong>${gymNombre}</strong> exige adjuntar: ${textoReq.join(' y ')}.<br>
+                <u>No podrás enviar el informe sin subir la foto.</u>
             </div>
         </div>`;
- 
+
     const cardGim = document.getElementById("card-gimnasio");
     if (cardGim) cardGim.appendChild(aviso);
- 
-    // ── Toast prominente (solo si pide remito) ────────────────
+
+    // ── Toast prominente que salta en la pantalla ──
     if (necesitaRemito) {
         const toast = document.createElement("div");
         toast.id = "toast-remito";
-        toast.style.cssText = [
-            "position: fixed;",
-            "top: 70px;",
-            "left: 50%;",
-            "transform: translateX(-50%);",
-            "width: calc(100% - 32px);",
-            "max-width: 520px;",
-            "z-index: 9999;",
-            "background: linear-gradient(135deg, #e65100, #bf360c);",
-            "color: white;",
-            "border-radius: 14px;",
-            "padding: 16px 20px;",
-            "box-shadow: 0 8px 32px rgba(230,81,0,0.45);",
-            "display: flex;",
-            "align-items: center;",
-            "gap: 14px;",
-        ].join(" ");
- 
+        toast.style.cssText = "position:fixed; top:70px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:520px; z-index:9999; background:linear-gradient(135deg, #e65100, #bf360c); color:white; border-radius:14px; padding:16px 20px; box-shadow:0 8px 32px rgba(230,81,0,0.45); display:flex; align-items:center; gap:14px;";
+
         toast.innerHTML = `
-            <div style="font-size:36px; flex-shrink:0;">📋</div>
+            <div style="font-size:36px; flex-shrink:0;">🛑</div>
             <div style="flex:1;">
                 <div style="font-weight:900; font-size:15px; margin-bottom:4px;">
-                    ¡Este cliente requiere REMITO físico!
+                    ¡REMITO OBLIGATORIO!
                 </div>
                 <div style="font-size:13px; opacity:0.92; line-height:1.5;">
-                    Fotografiá el remito firmado y subilo como foto en el formulario.
+                    Para este gimnasio tenés que adjuntar la foto del remito firmado sí o sí.
                 </div>
             </div>
-            <button onclick="document.getElementById('toast-remito').remove()"
-                    style="background:rgba(255,255,255,0.25); border:none; color:white;
-                           width:30px; height:30px; border-radius:50%; font-size:16px;
-                           cursor:pointer; flex-shrink:0; font-weight:900;">✕</button>
+            <button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.25); border:none; color:white; width:30px; height:30px; border-radius:50%; font-size:16px; cursor:pointer; flex-shrink:0; font-weight:900;">✕</button>
         `;
- 
-        toast.addEventListener('click', (e) => {
-            if (e.target === toast) toast.remove();
-        });
- 
         document.body.appendChild(toast);
- 
-        // Auto-cerrar a los 8 segundos
-        setTimeout(() => {
-            const t = document.getElementById('toast-remito');
-            if (t) t.remove();
-        }, 8000);
+        setTimeout(() => { if (document.getElementById('toast-remito')) document.getElementById('toast-remito').remove(); }, 8000);
     }
 }
 
@@ -762,10 +731,39 @@ function cerrarRegistro() { const modal = document.getElementById('modalRegistro
 function mostrarStatus(mensaje, tipoClase) { const statusDiv = document.getElementById("status"); statusDiv.innerHTML = mensaje; statusDiv.className = "status mostrar " + tipoClase; }
 
 function validarYEnviar() {
-    document.getElementById("status").className = "status"; document.getElementById("tecnico").classList.remove("error-input"); document.getElementById("buscador").classList.remove("error-input"); document.getElementById("otroGimnasio").classList.remove("error-input"); document.getElementById("card-motivo").style.border = "none";
-    const tecnico = document.getElementById("tecnico").value.trim(); const buscadorVal = document.getElementById("buscador").value.trim(); const otroGimVal = document.getElementById("otroGimnasio").value.trim(); const gimnasioCompleto = buscadorVal || otroGimVal; const algunMotivoTildado = document.querySelectorAll(".motivo:checked").length > 0; const otroMotivoEscrito = document.getElementById("otroMotivo").value.trim() !== "";
-    let errores = []; if (!tecnico) { errores.push("Técnico"); document.getElementById("tecnico").classList.add("error-input"); } if (buscadorVal !== "" && otroGimVal !== "") { errores.push("Elegí de la lista O escribí uno nuevo"); document.getElementById("buscador").classList.add("error-input"); document.getElementById("otroGimnasio").classList.add("error-input"); } else if (!gimnasioCompleto) { errores.push("Gimnasio"); document.getElementById("buscador").classList.add("error-input"); document.getElementById("otroGimnasio").classList.add("error-input"); } if (!algunMotivoTildado && !otroMotivoEscrito) { errores.push("Motivo"); document.getElementById("card-motivo").style.border = "2px solid #d93025"; }
-    if (errores.length > 0) { mostrarStatus("⚠️ Error: " + errores.join(", "), "error"); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); return; } enviarFormulario();
+    document.getElementById("status").className = "status"; 
+    document.getElementById("tecnico").classList.remove("error-input"); 
+    document.getElementById("buscador").classList.remove("error-input"); 
+    document.getElementById("otroGimnasio").classList.remove("error-input"); 
+    document.getElementById("card-motivo").style.border = "none";
+    document.getElementById("card-archivo").style.border = "none"; // Reset visual de fotos
+
+    const tecnico = document.getElementById("tecnico").value.trim(); 
+    const buscadorVal = document.getElementById("buscador").value.trim(); 
+    const otroGimVal = document.getElementById("otroGimnasio").value.trim(); 
+    const gimnasioCompleto = buscadorVal || otroGimVal; 
+    const algunMotivoTildado = document.querySelectorAll(".motivo:checked").length > 0; 
+    const otroMotivoEscrito = document.getElementById("otroMotivo").value.trim() !== "";
+
+    let errores = []; 
+    if (!tecnico) { errores.push("Técnico"); document.getElementById("tecnico").classList.add("error-input"); } 
+    if (buscadorVal !== "" && otroGimVal !== "") { errores.push("Elegí de la lista O escribí uno nuevo"); document.getElementById("buscador").classList.add("error-input"); document.getElementById("otroGimnasio").classList.add("error-input"); } 
+    else if (!gimnasioCompleto) { errores.push("Gimnasio"); document.getElementById("buscador").classList.add("error-input"); document.getElementById("otroGimnasio").classList.add("error-input"); } 
+    if (!algunMotivoTildado && !otroMotivoEscrito) { errores.push("Motivo"); document.getElementById("card-motivo").style.border = "2px solid #d93025"; }
+
+    // 🔴 NUEVA VALIDACIÓN: REMITO OBLIGATORIO
+    if (window.gymRequiereRemito && window.archivosSeleccionados.length === 0) {
+        errores.push("Foto del Remito (Es obligatorio para este gimnasio)");
+        document.getElementById("card-archivo").style.border = "2px solid #d93025";
+        document.getElementById("card-archivo").style.borderRadius = "14px";
+    }
+
+    if (errores.length > 0) { 
+        mostrarStatus("⚠️ Error, falta completar: " + errores.join(", "), "error"); 
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); 
+        return; 
+    } 
+    enviarFormulario();
 }
 
 function obtenerUbicacion() { return new Promise((resolve) => { if (!navigator.geolocation) { resolve({ lat: "No soportado", lng: "No soportado" }); return; } navigator.geolocation.getCurrentPosition( (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }), (err) => resolve({ lat: "Sin permiso", lng: "Sin permiso" }), { timeout: 5000 } ); }); }
@@ -953,6 +951,13 @@ function reiniciarFormulario() {
     mostrarLista([], false); 
     document.getElementById("ghost").innerHTML = ""; 
     
+    // Limpieza de avisos de Remito y borde rojo de fotos
+    window.gymRequiereRemito = false;
+    document.getElementById("card-archivo").style.border = "none";
+    ['aviso-remito', 'aviso-oc'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.remove();
+    });
+    
     let savedTecnico = localStorage.getItem("tecnico"); 
     if (savedTecnico) document.getElementById("tecnico").value = savedTecnico; 
     
@@ -971,7 +976,7 @@ function reiniciarFormulario() {
     localStorage.removeItem('borrador_otros_motivos');
 
     cargarPanelHistorial(); 
-    if (typeof actualizarProgress === 'function') actualizarProgress(); // Reinicia los puntitos verdes de pasos
+    if (typeof actualizarProgress === 'function') actualizarProgress(); 
     
     setTimeout(() => { 
         document.getElementById("btnEnviar").disabled = false; 
