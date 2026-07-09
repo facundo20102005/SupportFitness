@@ -2,98 +2,717 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#1a73e8">
-    <title>Institucional - Support Fitness</title>
-    <link rel="icon" href="../assets/logo.jpeg">
-    <!-- index.html, Jefatura/index.html, Informes/Informes-index.html -->
-    <script src="/inf-config.js"></script>   <!-- o la ruta relativa correcta -->
-    <link rel="stylesheet" href="../style.css">
-    <script src="../nav.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Tienda de repuestos oficiales y equipamiento de Support Fitness.">
+    <title>Tienda Oficial - Support Fitness</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
     <style>
-        /* FIX: Layout institucional siempre vertical, sin importar grid-resenas del padre */
-        .institucional-wrapper {
-            display: block !important;
-            max-width: 760px;
-            margin: 0 auto;
-            padding: 80px 20px 100px;
-            box-sizing: border-box;
+        /* =========================================================
+           DESIGN TOKENS — "Orden de Servicio" / ficha técnica
+           ========================================================= */
+        :root{
+            --ink:#181c1f;
+            --panel:#20262b;
+            --panel-2:#2a3138;
+            --paper:#eef1ef;
+            --card:#ffffff;
+            --line:#dde2e0;
+            --orange:#ff6a39;
+            --orange-dark:#dd4c1c;
+            --steel:#3d5a73;
+            --steel-light:#7fa0b8;
+            --green:#2f7d55;
+            --muted:#65706e;
+            --radius:14px;
+            --font-display:'Oswald', sans-serif;
+            --font-body:'Inter', sans-serif;
+            --font-data:'IBM Plex Mono', monospace;
         }
-        .institucional-wrapper .card {
-            display: block;
+
+        *{ scroll-behavior:smooth; }
+
+        body{
+            background-color: var(--paper);
+            font-family: var(--font-body);
+            color: var(--ink);
+        }
+
+        h1,h2,h3,h4,h5,h6{
+            font-family: var(--font-display);
+            letter-spacing: .01em;
+            text-transform: none;
+        }
+
+        ::selection{ background: var(--orange); color:#fff; }
+
+        a{ text-decoration:none; }
+
+        @media (prefers-reduced-motion: reduce){
+            *{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior:auto !important; }
+        }
+
+        /* ---------- Hazard strip (Barra de peligro) ---------- */
+        .hazard-strip{
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
             width: 100%;
-            margin-bottom: 20px;
-            box-sizing: border-box;
+            background: repeating-linear-gradient(-45deg, var(--orange) 0 14px, var(--panel) 14px 28px);
+            z-index: 1050;
         }
-        .grid-resenas-inst {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 12px;
-            margin-top: 12px;
+
+        /* ---------- Header / Nav ---------- */
+        #site-header{
+            padding-top: 6px; /* Compensa la barra absoluta superior */
+            background: var(--panel);
+            border-bottom: 1px solid rgba(255,255,255,.06);
+            transition: box-shadow .3s ease, padding .3s ease;
         }
-        .resena-card-inst {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 14px;
-            border: 1px solid #e8eaed;
+        #site-header.is-scrolled{
+            box-shadow: 0 8px 24px rgba(0,0,0,.25);
+        }
+        #site-header .navbar-brand{
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 1.25rem;
+            letter-spacing: .03em;
+            color:#fff !important;
+        }
+        
+        /* Botón Sala Técnica unificado con el resto del diseño */
+        .nav-link-tech{
+            display:inline-flex;
+            align-items:center;
+            gap:.4rem;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 999px;
+            color: #fff !important;
+            font-family: var(--font-data);
+            font-weight:600;
+            font-size:.85rem;
+            padding: .45rem 1.1rem;
+            letter-spacing: .02em;
+            transition: all .2s ease;
+        }
+        .nav-link-tech:hover{
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .currency-select{
+            appearance: none;
+            -webkit-appearance: none;
+            background: var(--panel-2) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23ff6a39"/></svg>') no-repeat right .7rem center;
+            color: #fff;
+            border: 1px solid rgba(255,255,255,.15);
+            font-family: var(--font-data);
+            font-size: .78rem;
+            letter-spacing: .03em;
+            padding: .45rem 1.8rem .45rem .8rem !important;
+            border-radius: 999px !important;
+        }
+        .currency-select:focus{
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255,106,57,.35);
+        }
+
+        .cart-trigger{
+            position:relative;
+            border: 1px solid rgba(255,255,255,.25) !important;
+            color:#fff !important;
+            border-radius: 999px !important;
+            font-weight:600;
+            padding:.45rem 1.1rem !important;
+            transition: background .2s ease, transform .15s ease;
+        }
+        .cart-trigger:hover{ background: rgba(255,255,255,.08) !important; transform: translateY(-1px); }
+        #cart-badge{
+            font-family: var(--font-data);
+            font-weight:600;
+            box-shadow: 0 0 0 2px var(--panel);
+            animation: badgePulse 2.4s ease-in-out infinite;
+        }
+        @keyframes badgePulse{
+            0%,100%{ transform: translate(-50%,-50%) scale(1); }
+            50%{ transform: translate(-50%,-50%) scale(1.12); }
+        }
+
+        /* ---------- Hero ---------- */
+        .hero-panel{
+            position: relative;
+            background: var(--panel);
+            color:#fff;
+            border-radius: var(--radius);
+            overflow:hidden;
+            padding: 3.2rem 2.4rem;
+        }
+        .hero-panel::before{
+            content:"";
+            position:absolute; inset:0;
+            background:
+                radial-gradient(60% 90% at 85% 0%, rgba(255,106,57,.16), transparent 60%),
+                linear-gradient(180deg, var(--panel), var(--panel-2));
+            z-index:0;
+        }
+        .hero-panel > *{ position:relative; z-index:1; }
+        .hero-eyebrow{
+            display:inline-flex;
+            align-items:center;
+            gap:.5rem;
+            font-family: var(--font-data);
+            font-size:.75rem;
+            letter-spacing:.14em;
+            color: var(--orange);
+            text-transform: uppercase;
+            border: 1px solid rgba(255,106,57,.4);
+            padding: .35rem .8rem;
+            border-radius: 999px;
+            margin-bottom: 1.1rem;
+        }
+        .hero-eyebrow::before{
+            content:"";
+            width:7px; height:7px; border-radius:50%;
+            background: var(--orange);
+            box-shadow: 0 0 0 4px rgba(255,106,57,.2);
+        }
+        .hero-title{
+            font-weight:700;
+            font-size: clamp(2rem, 4vw, 3rem);
+            line-height:1.08;
+            margin-bottom: 1.1rem;
+        }
+        .hero-lead{
+            color: rgba(255,255,255,.72);
+            max-width: 640px;
+            font-size: 1.05rem;
+        }
+        .brand-strip{
+            margin-top: 2.6rem;
+            padding-top: 1.8rem;
+            border-top: 1px solid rgba(255,255,255,.12);
+        }
+        .brand-strip img{
+            filter: grayscale(1) brightness(1.6);
+            opacity:.55;
+            transition: filter .25s ease, opacity .25s ease, transform .25s ease;
+        }
+        .brand-strip img:hover{
+            filter:none;
+            opacity:1;
+            transform: translateY(-2px);
+        }
+
+        /* ---------- Section headers ---------- */
+        .section-eyebrow{
+            font-family: var(--font-data);
+            font-size:.75rem;
+            letter-spacing:.14em;
+            text-transform: uppercase;
+            color: var(--steel);
+        }
+        .section-heading{
+            display:flex;
+            align-items:baseline;
+            gap: .75rem;
+            border-bottom: 2px solid var(--ink);
+            padding-bottom: .6rem;
+            margin-bottom: 2rem;
+        }
+        .section-heading h2{
+            font-weight:700;
+            margin:0;
+        }
+
+        /* ---------- Catálogo / spinner ---------- */
+        #loading-productos .spinner-brand{
+            width:2.6rem; height:2.6rem;
+            color: var(--orange);
+        }
+        #loading-productos p{
+            font-family: var(--font-data);
+            font-size:.85rem;
+            letter-spacing:.04em;
+            color: var(--muted);
+        }
+
+        /* ---------- Product "ficha técnica" cards ---------- */
+        @keyframes cardIn{
+            from{ opacity:0; transform: translateY(14px); }
+            to{ opacity:1; transform: translateY(0); }
+        }
+        #contenedor-productos > div{ animation: cardIn .5s cubic-bezier(.2,.7,.3,1) both; }
+        #contenedor-productos > div:nth-child(1){ animation-delay: .02s; }
+        #contenedor-productos > div:nth-child(2){ animation-delay: .08s; }
+        #contenedor-productos > div:nth-child(3){ animation-delay: .14s; }
+        #contenedor-productos > div:nth-child(4){ animation-delay: .2s; }
+        #contenedor-productos > div:nth-child(5){ animation-delay: .26s; }
+        #contenedor-productos > div:nth-child(6){ animation-delay: .32s; }
+        #contenedor-productos > div:nth-child(n+7){ animation-delay: .36s; }
+
+        #contenedor-productos .producto-card{
+            border-radius: var(--radius) !important;
+            border: 1px solid var(--line) !important;
+            background: var(--card);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 1px 2px rgba(20,20,20,.04) !important;
+            transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+        }
+        #contenedor-productos .producto-card::before{
+            content:"";
+            position:absolute; top:0; left:0; right:0;
+            height:4px;
+            background: linear-gradient(90deg, var(--orange), var(--steel));
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform .3s ease;
+        }
+        #contenedor-productos .producto-card:hover{
+            transform: translateY(-6px);
+            box-shadow: 0 18px 32px rgba(20,30,35,.14) !important;
+            border-color: rgba(255,106,57,.35) !important;
+        }
+        #contenedor-productos .producto-card:hover::before{ transform: scaleX(1); }
+        #contenedor-productos .producto-card:hover .card-img-top{ transform: scale(1.04); }
+        #contenedor-productos .card-img-top{
+            transition: transform .35s ease;
+            background: var(--paper);
+        }
+        #contenedor-productos .card-title{
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            letter-spacing: .01em;
+        }
+        #contenedor-productos .precio-ars{
+            font-family: var(--font-data) !important;
+            font-size: 1.15rem !important;
+            color: var(--green) !important;
+        }
+        #contenedor-productos .precio-usd{
+            font-family: var(--font-data) !important;
+            font-size: .8rem !important;
+            color: var(--muted) !important;
+        }
+        #contenedor-productos .iva-badge{
+            font-family: var(--font-data) !important;
+            background: rgba(61,90,115,.1) !important;
+            color: var(--steel) !important;
+            border: 1px solid rgba(61,90,115,.25);
+            letter-spacing:.02em;
+        }
+        #contenedor-productos p.text-muted.small.fw-bold{
+            font-family: var(--font-data);
+            font-size: .75rem !important;
+            letter-spacing: .03em;
+            color: var(--muted) !important;
+            padding: .3rem .55rem;
+            background: var(--paper);
+            border-radius: 6px;
+            display: inline-block;
+        }
+        #contenedor-productos .btn-primary{
+            background: var(--orange) !important;
+            border-color: var(--orange) !important;
+            border-radius: 8px !important;
+            letter-spacing:.01em;
+            transition: background .2s ease, transform .15s ease;
+        }
+        #contenedor-productos .btn-primary:hover{ background: var(--orange-dark) !important; }
+        #contenedor-productos .btn-primary:active{ transform: scale(.98); }
+        #contenedor-productos .btn-success{
+            background: var(--green) !important;
+            border-color: var(--green) !important;
+        }
+
+        /* ---------- Testimonios estilo "ticket de servicio" ---------- */
+        .comentario-card{
+            border-left: 4px solid var(--steel);
+            background: var(--card);
+            position: relative;
+        }
+        .comentario-card:nth-of-type(2n){ border-left-color: var(--orange); }
+        .comentario-card::after{
+            content:"";
+            position:absolute;
+            right: -1px; top:0; bottom:0;
+            width: 10px;
+            background-image: radial-gradient(circle at 0 6px, transparent 5px, var(--paper) 5px);
+            background-size: 10px 12px;
+            background-repeat: repeat-y;
+        }
+
+        /* ---------- Ventana de inspección (video) ---------- */
+        .inspection-frame{
+            position: relative;
+            border: 3px solid var(--panel);
+            border-radius: 16px;
+            padding: 10px;
+            background: var(--panel);
+        }
+        .inspection-frame .ratio{ border-radius: 10px; overflow:hidden; }
+        .inspection-frame::before,
+        .inspection-frame::after{
+            content:"";
+            position:absolute;
+            width:9px; height:9px;
+            border-radius:50%;
+            background: var(--orange);
+            top:8px;
+        }
+        .inspection-frame::before{ left:8px; }
+        .inspection-frame::after{ right:8px; }
+
+        /* ---------- Formulario de contacto = "orden de servicio" ---------- */
+        .service-form-wrap{
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+        }
+        .service-form-wrap .service-tag{
+            font-family: var(--font-data);
+            font-size:.75rem;
+            letter-spacing:.12em;
+            text-transform: uppercase;
+            color: var(--steel);
+        }
+        .service-form-wrap input,
+        .service-form-wrap textarea{
+            border: 1.5px solid var(--line) !important;
+            border-radius: 8px !important;
+            font-family: var(--font-body);
+            transition: border-color .2s ease, box-shadow .2s ease;
+        }
+        .service-form-wrap input:focus,
+        .service-form-wrap textarea:focus{
+            border-color: var(--orange) !important;
+            box-shadow: 0 0 0 3px rgba(255,106,57,.15) !important;
+            outline: none;
+        }
+        .service-form-wrap button[type="submit"]{
+            background: var(--orange);
+            border-color: var(--orange);
+            border-radius: 8px;
+            transition: background .2s ease, transform .15s ease;
+        }
+        .service-form-wrap button[type="submit"]:hover{ background: var(--orange-dark); }
+        .service-form-wrap button[type="submit"]:active{ transform: scale(.98); }
+
+        /* ---------- Offcanvas carrito ---------- */
+        .offcanvas-header{
+            background: var(--panel) !important;
+            border-bottom: none !important;
+        }
+        .offcanvas-header .offcanvas-title{ color:#fff; font-family: var(--font-display); }
+        .offcanvas-header .btn-close{ filter: invert(1) brightness(1.6); }
+        #carrito-panel{ max-height: 70vh; overflow-y:auto; }
+        #carrito-panel .fw-bold.text-truncate{ font-family: var(--font-body); }
+        #carrito-panel .text-success.small{
+            font-family: var(--font-data);
+            color: var(--green) !important;
+        }
+        #carrito-panel .btn-group .btn{ border-radius: 6px !important; }
+        #carrito-panel .btn-light.disabled{
+            font-family: var(--font-data);
+            background: var(--paper) !important;
+        }
+        #carrito-total{
+            font-family: var(--font-data);
+            color: var(--green) !important;
+        }
+
+        /* ---------- Modales ---------- */
+        #modalCheckout .modal-header{ background: var(--panel) !important; }
+        #modalCheckout .modal-title{ font-family: var(--font-display); }
+        #modalCheckout .form-control{
+            border-radius: 8px;
+            border: 1.5px solid var(--line);
+        }
+        #modalCheckout .form-control:focus{
+            border-color: var(--orange);
+            box-shadow: 0 0 0 3px rgba(255,106,57,.15);
+        }
+        #btn-confirmar-pago{
+            background: var(--green);
+            border-color: var(--green);
+            border-radius: 8px;
+            transition: transform .15s ease;
+        }
+        #btn-confirmar-pago:active{ transform: scale(.98); }
+
+        #modalExito .checkmark{
+            width: 76px; height:76px;
+            border-radius: 50%;
+            border: 3px solid var(--green);
+            display:flex; align-items:center; justify-content:center;
+            margin: 0 auto 1rem;
+            animation: stampIn .45s cubic-bezier(.3,1.5,.5,1) both;
+        }
+        #modalExito .checkmark span{ font-size: 2.1rem; color: var(--green); }
+        @keyframes stampIn{
+            0%{ opacity:0; transform: scale(.4) rotate(-12deg); }
+            100%{ opacity:1; transform: scale(1) rotate(0); }
+        }
+
+        /* ---------- Footer ---------- */
+        #site-footer{
+            background: var(--panel);
+        }
+        #site-footer p{
+            font-family: var(--font-data);
+            font-size:.8rem;
+            letter-spacing:.03em;
+            color: rgba(255,255,255,.6);
+        }
+
+        /* ---------- Reveal on scroll (secciones estáticas) ---------- */
+        .reveal{
+            opacity: 0;
+            transform: translateY(18px);
+            transition: opacity .6s ease, transform .6s ease;
+        }
+        .reveal.is-visible{
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* ---------- Corrección del input de contraseña ---------- */
+        #input-pass-tecnica {
+            background-color: var(--panel-2) !important;
+            color: #ffffff !important;
+            border: 1.5px solid rgba(255,255,255,.1) !important;
+            font-family: var(--font-data);
+        }
+        #input-pass-tecnica:focus {
+            background-color: var(--panel-2) !important;
+            color: #ffffff !important;
+            border-color: var(--orange) !important;
+            box-shadow: 0 0 0 3px rgba(255,106,57,.15) !important;
+        }
+        #input-pass-tecnica::placeholder {
+            color: rgba(255,255,255,0.5) !important;
         }
     </style>
 </head>
-<body style="background-color:#f0f2f5;">
+<body>
 
-    <div class="institucional-wrapper">
+    <header id="site-header" class="navbar navbar-expand-lg navbar-dark sticky-top">
+        <div class="hazard-strip"></div>
+        <div class="container py-2">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <img src="../assets/logo.jpeg" alt="Logo Support Fitness" width="40" height="40" class="me-2" style="border-radius:10px; object-fit:cover;">
+                SupportFitness
+            </a>
 
-        <div class="card">
-            <h2 style="color:#1a73e8; margin-top:0;">🏢 Support Fitness - Servicios</h2>
-            <p>Especialistas en mantenimiento preventivo y reparación de equipamiento fitness de alto rendimiento.</p>
-            <h3 style="margin-top:20px;">🎬 Nuestra Metodología</h3>
-            <iframe width="100%" height="250"
-                src="https://www.youtube.com/embed/8e2iHuGdpsY"
-                frameborder="0" allowfullscreen
-                style="border-radius:8px; margin-top:10px; display:block;"></iframe>
-        </div>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navOpciones">
+                <span class="navbar-toggler-icon"></span>
+            </button>
 
-        <div class="card">
-            <h3 style="color:#1a73e8; margin-top:0;">⭐ Reseñas Destacadas</h3>
-            <div class="grid-resenas-inst">
-                <article class="resena-card-inst">
-                    <b>Gimnasio 1</b><br>
-                    <span style="font-size:13px; color:#5f6368;">"Excelente mantenimiento preventivo. Las cintas quedaron como nuevas."</span>
-                </article>
-                <article class="resena-card-inst">
-                    <b>Gimnasio 2</b><br>
-                    <span style="font-size:13px; color:#5f6368;">"Muy rápidos con los tapizados, calidad de primera en las cuerinas."</span>
-                </article>
-                <article class="resena-card-inst">
-                    <b>Gimnasio 3</b><br>
-                    <span style="font-size:13px; color:#5f6368;">"El cambio de cables y terminales se hizo en el día. 100% recomendados."</span>
-                </article>
+            <div class="collapse navbar-collapse" id="navOpciones">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-lg-4 mt-3 mt-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link-tech" href="#" onclick="abrirModalAccesoTecnico(event)">🔒 Sala Técnica</a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    <select id="selector-moneda" class="form-select form-select-sm currency-select" style="width: auto;" onchange="renderizarProductos(); renderizarCarrito();">
+                        <option value="ARS">Mostrar en ARS (Pesos)</option>
+                        <option value="USD">Mostrar en USD (Dólares)</option>
+                    </select>
+                    <button class="btn cart-trigger position-relative" data-bs-toggle="offcanvas" data-bs-target="#offcanvasCarrito">
+                        🛒 Carrito
+                        <span id="cart-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
+                    </button>
+                </div>
             </div>
         </div>
+    </header>
 
-        <div class="card">
-            <h3 style="color:#1a73e8; margin-top:0;">✉️ Contacto Comercial</h3>
-            <form action="https://formspree.io/f/mlgzwrgq" method="POST"
-                  style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
-                <input type="text" name="nombre" placeholder="Nombre del Gimnasio o Consorcio" required
-                       style="padding:12px; border:1.5px solid #ccc; border-radius:6px; font-size:14px;">
-                <input type="email" name="email" placeholder="Correo Electrónico" required
-                       style="padding:12px; border:1.5px solid #ccc; border-radius:6px; font-size:14px;">
-                <textarea name="mensaje" placeholder="Consulta o pedido de presupuesto..." required
-                          style="padding:12px; border:1.5px solid #ccc; border-radius:6px; min-height:80px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
-                <button type="submit" class="btn-submit" style="margin-top:5px;">Enviar Consulta 📤</button>
-            </form>
+    <main class="container py-5">
+
+        <section class="mb-5 hero-panel">
+            <span class="hero-eyebrow">Taller oficial &middot; repuestos certificados</span>
+            <h1 class="hero-title">Expertos en Equipamiento</h1>
+            <p class="hero-lead">
+                En Support Fitness no solo vendemos repuestos, sino que garantizamos el funcionamiento continuo de tu gimnasio.
+                Contamos con stock oficial y trabajamos codo a codo con las marcas líderes del mercado para ofrecerte la mejor calidad y durabilidad.
+            </p>
+            <div class="brand-strip d-flex flex-wrap gap-4">
+                <img src="../assets/Octane.png" alt="Octane" height="36">
+                <img src="../assets/Paramount.png" alt="Paramount" height="36">
+                <img src="../assets/StarTrac.png" alt="Star Trac" height="36">
+                <img src="../assets/Spinning.png" alt="Spinning" height="36">
+            </div>
+        </section>
+
+        <span id="valor-dolar-display" style="display: none;"></span>
+
+        <section class="mb-5">
+            <div class="section-heading">
+                <span class="section-eyebrow">Cat.01</span>
+                <h2>Catálogo de Repuestos</h2>
+            </div>
+            <div id="loading-productos" class="text-center py-5">
+                <div class="spinner-border spinner-brand" role="status"></div>
+                <p class="mt-2">Sincronizando stock en tiempo real...</p>
+            </div>
+            <div class="row g-4" id="contenedor-productos"></div>
+        </section>
+
+        <section class="mb-5 reveal">
+            <div class="section-heading">
+                <span class="section-eyebrow">Cat.02</span>
+                <h2>Lo que dicen nuestros clientes</h2>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="comentario-card h-100 p-4">
+                        <p class="fst-italic text-muted">"Teníamos 3 cintas StarTrac paradas. Compramos los repuestos acá y el equipo técnico las dejó como nuevas en tiempo récord. Altamente recomendados."</p>
+                        <h6 class="fw-bold mb-0 mt-3">- Gimnasio Narziso Fitness Club</h6>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="comentario-card h-100 p-4">
+                        <p class="fst-italic text-muted">"El sistema de facturación y seguimiento es impecable. Los repuestos siempre llegan en la fecha prometida y el soporte es excelente."</p>
+                        <h6 class="fw-bold mb-0 mt-3">- Consorcio Torres del Yacht</h6>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="mb-5 bg-white p-4 p-md-5 rounded shadow-sm text-center reveal">
+            <span class="section-eyebrow d-block mb-2">Cat.03</span>
+            <h2 class="fw-bold mb-4">¿Cómo trabajamos?</h2>
+            <p class="text-muted mb-4 mx-auto" style="max-width: 640px;">Conocé nuestro taller y mirá el proceso de mantenimiento y reparación que le aplicamos a cada equipo para garantizar su máxima durabilidad.</p>
+
+            <div class="inspection-frame mx-auto" style="max-width: 820px;">
+                <div class="ratio ratio-16x9 w-100">
+                    <iframe src="https://www.youtube.com/embed/8e2iHuGdpsY" title="Video de presentación" allowfullscreen></iframe>
+                </div>
+            </div>
+        </section>
+
+        <section class="mb-5 service-form-wrap p-4 p-md-5 reveal">
+            <div class="text-center mb-4">
+                <span class="service-tag d-block mb-2">Orden de servicio &middot; consulta</span>
+                <h2 class="fw-bold">Dejanos tu comentario o consulta</h2>
+                <p class="text-muted">Si necesitás un repuesto específico o querés dejarnos tu opinión sobre nuestro servicio técnico, escribinos.</p>
+            </div>
+
+            <div class="mb-3 mx-auto" style="max-width: 560px;">
+                <h3 style="color:var(--steel); margin-top:0; font-family:var(--font-display);">✉️ Contacto Comercial</h3>
+                <form id="form-contacto" action="https://formspree.io/f/mlgzwrgq" method="POST"
+                      style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
+                    <input type="text" name="nombre" placeholder="Nombre del Gimnasio o Consorcio" required
+                           style="padding:12px; font-size:14px;">
+                    <input type="email" name="email" placeholder="Correo Electrónico" required
+                           style="padding:12px; font-size:14px;">
+                    <textarea name="mensaje" placeholder="Consulta o pedido de presupuesto..." required
+                              style="padding:12px; min-height:100px; font-family:inherit; font-size:14px; resize:vertical;"></textarea>
+                    <div id="status-contacto" class="alert d-none" role="alert"></div>
+                    <button type="submit" class="btn text-white w-100 fw-bold py-2" style="font-size: 1.05rem;">
+                        Enviar Comentario ✉️
+                    </button>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasCarrito">
+        <div class="offcanvas-header border-bottom">
+            <h5 class="offcanvas-title fw-bold">Tu Carrito</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
         </div>
-
-        <footer style="text-align:center; margin-top:10px; font-size:12px; color:#999;">
-            <p>&copy; 2026 Support Fitness. Todos los derechos reservados.</p>
-        </footer>
+        <div class="offcanvas-body d-flex flex-column">
+            <div id="carrito-panel" class="flex-grow-1 mb-3"></div>
+            <div class="border-top pt-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="fs-5 fw-bold">Total Final:</span>
+                    <span class="fs-4 fw-bold" id="carrito-total">$0</span>
+                </div>
+                <button class="btn w-100 py-2 fw-bold text-white" style="background:var(--orange);" onclick="abrirModalCheckout()">💳 Proceder al Pago</button>
+                <button class="btn btn-outline-danger w-100 py-2 mt-2" onclick="vaciarCarrito()">🗑️ Vaciar Carrito</button>
+            </div>
+        </div>
     </div>
 
-    <button class="btn-flotante-dark" id="btn-dark-mode" onclick="NavBar.toggleDarkMode()" title="Modo Oscuro">🌙</button>
+    <div class="modal fade" id="modalCheckout" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header text-white">
+                    <h5 class="modal-title fw-bold">📦 Datos de Envío</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-4">Ingresá tu dirección para calcular la logística. El tiempo estimado de entrega es de <strong>7 días hábiles</strong>.</p>
+                    <form id="formCheckout" onsubmit="procesarPago(event)">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nombre Completo</label>
+                            <input type="text" class="form-control" id="check-nombre" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Dirección de Entrega</label>
+                            <input type="text" class="form-control" id="check-direccion" placeholder="Ej: Av. Libertador 9999, CABA" required>
+                        </div>
 
-    <script>
-        NavBar.init({ paginaActual: 'institucional', mostrarBottomNav: false });
-    </script>
+                        <div id="checkout-alert" class="alert alert-danger d-none mt-3"></div>
+
+                        <button type="submit" class="btn text-white w-100 py-2 fw-bold mt-2" id="btn-confirmar-pago">
+                            Confirmar y Comprar
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalExito" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered text-center">
+            <div class="modal-content">
+                <div class="modal-body p-5">
+                    <div class="checkmark"><span>✔️</span></div>
+                    <h2 class="fw-bold">¡Compra Exitosa!</h2>
+                    <p class="text-muted mt-3" id="exito-mensaje">
+                        Tu pedido está siendo preparado. Lo vas a recibir en la dirección indicada en los próximos <strong>7 días hábiles</strong>.
+                    </p>
+                    <button type="button" class="btn px-4 mt-3 fw-bold text-white" style="background:var(--orange);" data-bs-dismiss="modal">Entendido</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer id="site-footer" class="text-center py-4 mt-auto">
+        <p class="mb-0">Proyecto Final E-commerce © 2026 Support Fitness.</p>
+    </footer>
+
+    <div class="modal fade" id="modalAccesoTecnico" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content" style="background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <div class="modal-body p-4 text-center">
+                    <h5 class="fw-bold text-white mb-3" style="font-family: var(--font-display);">🔒 Acceso Restringido</h5>
+                    
+                    <p class="small mb-4" style="color: rgba(255,255,255,0.7);">Ingresá la contraseña de autorización para entrar a la Sala Técnica.</p>
+                    
+                    <div class="position-relative mb-3">
+                        <input type="password" id="input-pass-tecnica" class="form-control text-center fw-bold" placeholder="Contraseña..." style="padding-right: 40px; padding-left: 40px;">
+                        
+                        <span id="toggle-pass-icon" onclick="togglePasswordVisibility()" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 1.1rem; opacity: 0.8; user-select: none;">👁️</span>
+                    </div>
+                    
+                    <div id="error-pass-tecnica" class="text-danger small mb-3 d-none fw-bold">❌ Contraseña incorrecta</div>
+                    
+                    <button class="btn w-100 fw-bold text-white" style="background: var(--orange);" onclick="verificarAccesoTecnico()">Ingresar al Sistema</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
