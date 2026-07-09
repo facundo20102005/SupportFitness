@@ -1,401 +1,249 @@
-# Support Fitnes — Sistema Integral de Gestión Técnica
+# Support Fitness — Documentación completa del proyecto
 
-## 📋 Descripción General
+## Descripción general
 
-**Support Fitnes** es una aplicación web completa para la gestión de visitas técnicas en gimnasios. Proporciona herramientas para:
-- 📝 Registrar visitas y mantenimiento de equipos
-- 💰 Generar presupuestos y ofertas de reparación
-- 💺 Gestionar trabajos de tapizado
-- 📊 Acceder a panel de jefatura con estadísticas
-- 🌐 Presentación institucional del negocio
+Support Fitness es una aplicación web orientada a la operación técnica de gimnasios y al manejo de documentos comerciales. El sistema combina:
 
-Funciona **en línea y offline** con sincronización automática de datos.
+- registro de visitas técnicas
+- gestión de mantenimiento y reparaciones
+- panel de jefatura con métricas y calendario
+- módulo de informes para presupuestos, ofertas y abonos
+- una vista institucional con tienda y formulario de contacto
+- soporte offline con sincronización posterior
+
+La app está pensada para funcionar desde un navegador moderno y se comunica con Google Apps Script como backend.
 
 ---
 
-## 🏗️ Estructura de Carpetas
+## Estructura del proyecto
 
-```
+```text
 www/
-├── index.html              # Página principal (formulario de visitas)
-├── app.js                  # Lógica principal (DB local, API, UI)
-├── style.css               # Estilos globales (variables CSS, diseño responsive)
-├── README.md               # Este archivo
-├── assets/                 # Imágenes del proyecto
-│   ├── logo.jpeg
-│   ├── logo2.jpeg
-│   ├── logo4.jpeg
-│   └── logo5.jpeg
-└── Informes/               # Módulo de documentos
-    ├── index.html          # Interfaz para ofertas y presupuestos
-    ├── app.js              # Lógica de cálculo y gestión de informes
-    ├── style.css           # Estilos locales (heredan de ../style.css)
-    ├── text                # Archivo auxiliar
-    └── README.md           # Documentación del módulo Informes
+├── index.html              # Página principal del formulario de visitas
+├── app.js                  # Lógica principal de registro, offline y UI
+├── style.css               # Estilos globales de la app
+├── nav.js                  # Barra de navegación compartida entre páginas
+├── sw.js                   # Service Worker para PWA/offline
+├── vercel.json             # Configuración de despliegue en Vercel
+├── assets/                 # Imágenes y recursos visuales
+├── Institucional/          # Landing institucional + tienda
+├── Jefatura/               # Panel administrativo y calendario
+└── Informes/               # Módulo de documentos y presupuestos
 ```
 
 ---
 
-## 📄 Descripción de Archivos Principales
+## Páginas y módulos
 
-### **index.html** (Página Principal)
-Estructura HTML con múltiples vistas:
+### 1) Página principal — index.html + app.js
 
-1. **Vista Formulario** 
-   - Captura datos de técnico, gimnasio, motivo, observaciones
-   - Campos para reparación y tapizado
-   - Opción de cargar archivos adjuntos
-   - Botones para enviar en línea o guardar offline
+Esta es la pantalla central de operación técnica.
 
-2. **Vista Institucional**
-   - Video de YouTube con metodología
-   - Reseñas destacadas de clientes
-   - Formulario de contacto vía Formspree
+#### Qué incluye
+- formulario para registrar visitas técnicas
+- selección de técnico, gimnasio, motivo y observaciones
+- opción de marcar reparación y/o tapizado
+- carga de fotos y archivos adjuntos
+- envío online o almacenamiento local si no hay conexión
+- historial de visitas y panel de apoyo visual
 
-3. **Vista Jefatura** (protegida con contraseña)
-   - Calendario interactivo con estadísticas
-   - Gráficos de actividad mensual
-   - Lista de gimnasios por zona
-   - Control de presupuestos y pagos
+#### Lógica principal de app.js
+- comunicación con Google Apps Script mediante fetch
+- almacenamiento local con IndexedDB para modo offline
+- sincronización automática cada cierto tiempo
+- indicador de conexión en la navegación
+- validación de acceso para secciones protegidas
+- manejo de alertas, confirmaciones y mensajes de estado
 
-4. **Vista Tapizados** (protegida con contraseña)
-   - Gestión de trabajos de reupholstering
-   - Carga de fotos antes/después
-   - Estado de avance
-
-5. **Vista Informes** (acceso desde `/Informes/index.html`)
-   - Módulo separado para crear y gestionar ofertas y presupuestos
-
-### **app.js** (Lógica Principal)
-
-Estructura y funcionalidades:
-
-#### 📡 Comunicación con API
-```javascript
-const API_URL = "https://script.google.com/macros/s/[ID_SCRIPT]/exec";
-const VERSION_APP = 8;
-
-async function llamarAPI(accionObj) {
-  // POST a Google Apps Script
-  // Returna { status: "success", data: {...} }
-}
-```
-
-#### 🗄️ Base de Datos Local (IndexedDB)
-```javascript
-- DB_NAME: "SupportFitnesDB"
-- Tabla: "pendientes" - guarda visitas offline
-- Métodos: initDB(), guardarOfflineBD(), obtenerPendientesBD(), eliminarPendienteBD()
-```
-
-**Funcionalidad**: Si no hay conexión, los datos se guardan localmente y se sincronizan cuando hay internet.
-
-#### 🔐 Indicador de Conexión
-```javascript
-actualizarDotConexion() // Dot rojo si offline, verde si online
-navega cada 4 segundos para detectar cambios
-```
-
-#### 📋 Datos Principales
-
-**Lista de Gimnasios** (80+ clientes)
-```javascript
-gimnasios = ["46 PLAZA PILAR", "Always Club 1", "Banco Galicia", ...]
-```
-
-**Cronograma de Zonas** (5 zonas geográficas)
-```javascript
-cronogramaZonas = [
-  { zona: "Zona 1", clientes: [{nombre: "...", freq: "Mensual"}, ...] },
-  ...
-]
-```
-
-#### 🎨 Funciones de UI
-- `cerrarVistas()` - Alterna entre vistas
-- `abrirInicio()` - Abre vista institucional
-- `intentarAbrirJefatura()`, `intentarAbrirTapizados()`, `intentarAbrirInformes()` - Acces con autenticación
-- `verificarPassword()` - Valida contraseña contra API
-- `mostrarLista()`, `mostrarAlerta()`, `mostrarConfirmacion()` - Modales personalizados
-
-#### 📤 Envío de Datos
-```javascript
-async function registrarVisita() {
-  // Recopila datos del formulario
-  // Genera timestamp
-  // Llama API con accionObj { accion: "registrarVisita", payload: {...} }
-  // Guarda offline si falla
-}
-```
-
-#### 🔄 Sincronización Offline
-```javascript
-async function sincronizarOffline() {
-  // Si hay conexión:
-  // - Obtiene registros locales pendientes
-  // - Los envía a la API uno por uno
-  // - Elimina de la BD local al éxito
-}
-```
-
-#### 📅 Historial y Calendario
-```javascript
-cargarPanelHistorial() - Obtiene visitas registradas
-renderizarCalendario() - Pinta calendario interactivo por año
-obtenerEstadisticasDelMes() - Calcula métricas mensuales
-```
-
-#### 🛡️ Versionado
-```javascript
-verificarVersion() - Comprueba si hay versión más nueva
-Si VERSION_APP < versionActual → muestra modal de descarga APK
-```
-
-### **style.css** (Estilos Globales)
-
-**Variables CSS personalizadas**:
-```css
---azul: #1a73e8
---verde: #0f9d58
---rojo: #d93025
---amarillo: #f9ab00
---gris-fondo: #f0f2f5
---nav-h: 60px
---bottom-nav-h: 68px
---transition: 0.2s cubic-bezier(...)
-```
-
-**Componentes principales**:
-- `.top-nav` - Barra de navegación superior (sticky)
-- `.nav-status-dot` - Indicador online/offline
-- `.pendientes-badge` - Badge de tareas pendientes con animación pulse
-- `.btn-jefe`, `.btn-submit`, `.btn-volver` - Botones estilizados
-- `.card` - Contenedor de contenido con sombra
-- `.modal-overlay`, `.modal-content` - Modales personalizados
-- `.bottom-nav` - Navegación inferior para móvil
-- `.grid-resenas`, `.resena-card` - Grid layout para reseñas
-- Media queries para responsive design
-
-**Animaciones**:
-- `@keyframes pulse` - Pulsación del badge
-- `@keyframes parpadeo` - Parpadeo del dot offline
-- `@keyframes mostrar` - Fade in de modales
-
-### **Informes/index.html & app.js**
-Ver [Informes/README.md](Informes/README.md) para documentación específica.
+#### Funciones clave
+- `llamarAPI()` para enviar acciones al backend
+- `initDB()` y `guardarOfflineBD()` para el almacenamiento local
+- `sincronizarOffline()` para reenviar registros pendientes
+- `cargarPanelHistorial()` y `renderizarCalendario()` para la vista de seguimiento
 
 ---
 
-## 🔧 Características Principales
+### 2) Vista institucional — Institucional/index.html + Institucional/app.js
 
-### ✅ Funcionalidades
+Esta sección funciona como portal institucional y comercial.
 
-1. **Registro de Visitas Técnicas**
-   - Selección de técnico, gimnasio, motivo
-   - Carga de fotos adjuntas
-   - Campo de observaciones
-   - Opción: reparación + tapizado
+#### Qué incluye
+- presentación de la marca y los servicios
+- hero visual con diseño moderno
+- catálogo de productos o repuestos
+- carrito de compras básico
+- formulario de contacto vía Formspree
+- acceso a la sala técnica mediante contraseña
 
-2. **Almacenamiento Offline**
-   - IndexedDB para guardar datos sin conexión
-   - Sincronización automática cada 4 segundos
-   - Indicador visual del estado de conexión
+#### Lógica de Institucional/app.js
+- obtención del dólar oficial desde DolarAPI
+- carga de productos desde el backend
+- cálculo de precios con IVA
+- renderizado del catálogo
+- gestión del carrito en almacenamiento local
+- validación de acceso técnico y envío del formulario de contacto
 
-3. **Autenticación por Rol**
-   - Contraseña para jefatura acceso exclusivo
-   - Acceso diferenciado a informes
-   - Gestión de sesión con localStorage
-
-4. **Panel de Jefatura**
-   - Calendario interactivo por mes/año
-   - Estadísticas de visitas por zona
-   - Historial de trabajos completados
-
-5. **Gestión de Tapizados**
-   - Registro de trabajos de reupholstering
-   - Carga de fotos antes/después
-   - Seguimiento de estado
-
-6. **Módulo Informes**
-   - Creación de ofertas de mantenimiento (con frecuencia)
-   - Creación de presupuestos de reparación (con IVA y factura)
-   - Búsqueda y edición de documentos guardados
-   - Integración con cotización oficial del dólar
-
-7. **Página Institucional**
-   - Presentación de servicios
-   - Reseñas de clientes
-   - Formulario de contacto vía Formspree
-   - Embedded video YouTube
+#### Uso principal
+Sirve tanto para mostrar la empresa como para exhibir productos y abrir el flujo técnico desde una experiencia más institucional.
 
 ---
 
-## 🛠️ Tecnologías Utilizadas
+### 3) Panel de jefatura — Jefatura/index.html + Jefatura/jefatura.js
 
-| Tecnología | Uso |
-|-----------|-----|
-| **HTML5** | Estructura semántica con `header`, `nav`, `main`, `section`, `article`, `footer` |
-| **CSS3** | Flexbox, CSS Grid, Media Queries, variables CSS, animaciones |
-| **JavaScript (ES6+)** | Manipulación del DOM, fetch API, IndexedDB, gestión de eventos |
-| **Google Apps Script** | Backend para leer/escribir en Google Sheets |
-| **Google Fonts** | Fuente "Nunito" para tipografía |
-| **Formspree** | Manejo de formulario de contacto por email |
-| **DolarAPI** | Obtención de cotización oficial (en módulo Informes) |
-| **IndexedDB** | Base de datos local del navegador |
-| **localStorage** | Almacenamiento de autenticación y datos de usuario |
+Esta vista está destinada a la supervisión operativa y al seguimiento del negocio.
 
----
+#### Qué incluye
+- acceso protegido mediante contraseña
+- KPIs mensuales y anuales
+- calendario de visitas por día
+- métricas de actividad por técnico y zona
+- exportación de clientes a Excel
+- sincronización de historial hacia hojas de zona
 
-## 🚀 Requisitos e Instalación
+#### Lógica de jefatura.js
+- autenticación contra el backend
+- consulta de datos de calendario y cronograma
+- carga de historial y documentos
+- cálculo de ingresos y estadística mensual
+- renderización del calendario y visualización de días con actividad
 
-### Requisitos
-- Navegador moderno con soporte ES6+ (Chrome, Firefox, Safari, Edge)
-- Conexión a internet (para sincronización; funciona offline)
-- Acceso a Google Apps Script (para backend)
-
-### Instalación
-
-1. **Cloná el repositorio**:
-   ```bash
-   git clone https://github.com/TU-USUARIO/support-fitnes.git
-   cd support-fitnes/www
-   ```
-
-2. **Abrí `index.html`**:
-   - Opción A: Doble clic en `index.html`
-   - Opción B: Usa Live Server en VS Code
-   - Opción C: Hospedá en GitHub Pages o servidor web
-
-3. **Configura Google Apps Script**:
-   - Reemplazá `API_URL` en `app.js` con tu URL de Google Apps Script
-   - Asegúrate que el script tenga:
-     - Función `registrarVisita()` para guardar datos en Sheets
-     - Función `verificarPassword()` para autenticación
-     - Función `verificarVersion()` para chequear versión
-
-4. **Configura Formspree** (opcional):
-   - En `index.html`, reemplazá `TU_CODIGO_AQUI` con tu Form ID de Formspree
-   - Obtené el ID en https://formspree.io
+#### Característica destacada
+La vista está diseñada para que un responsable pueda ver de forma rápida qué pasó en un mes, qué zonas tuvieron más actividad y qué ingresos se registraron.
 
 ---
 
-## 📊 Flujo de Datos
+### 4) Módulo de informes — Informes/Informes-index.html
 
-```
-[Usuario relena formulario]
-         ↓
-[Clic en "Enviar"]
-         ↓
-¿Hay conexión?
-    ↙        ↘
-   SÍ        NO
-   ↓         ↓
- API      IndexedDB
-(Google)  (Local)
-   ↓         ↓
- ✅        Guarda
-Respuesta  offline
-   ↓         ↓
-Vista     [Intenta
-actualiza  sincronizar
-          cada 4s]
-          ↓
-        [Si hay conexión]
-          ↓
-         API
-          ↓
-        ✅ Sincroniza
+Este módulo concentra la generación y administración de documentos comerciales.
+
+#### Qué incluye
+- creación de ofertas de mantenimiento
+- generación de presupuestos de reparación
+- carga de documentos guardados
+- vista de abonos mensuales
+- asesor de reparaciones
+- cálculo de montos, IVA y cotización del dólar
+
+#### Archivos del módulo
+- `Informes/Informes-index.html`: estructura principal de la interfaz
+- `Informes/inf-config.js`: constantes, URL de API y valores base
+- `Informes/inf-api.js`: funciones de conexión, sesión y autenticación
+- `Informes/inf-ui.js`: control de la interfaz y modos de visualización
+- `Informes/inf-docs.js`: gestión de documentos, items y PDF
+- `Informes/inf-abonos.js`: manejo de abonos mensuales
+- `Informes/inf-reparaciones.js`: lógica del asesor de reparaciones
+
+#### Objetivo
+Centralizar la operación comercial para que la creación de contratos, presupuestos y documentos sea más rápida y consistente.
+
+---
+
+### 5) Navegación compartida — nav.js
+
+Este archivo define la barra superior y la navegación inferior reutilizada por las distintas páginas.
+
+#### Qué hace
+- detecta la página actual
+- resuelve rutas correctamente entre folders
+- construye la navegación global
+- maneja el modo oscuro
+- permite moverse entre formulario, institucional, informes y jefatura
+
+Es una pieza central para mantener una experiencia uniforme en toda la app.
+
+---
+
+### 6) PWA y despliegue — sw.js + vercel.json
+
+#### sw.js
+Implementa un Service Worker para:
+- habilitar funcionamiento offline
+- precargar activos estáticos
+- actualizar cachés al deployar cambios
+- manejar fetch con estrategia adecuada según el recurso
+
+#### vercel.json
+Configura headers de caché y reglas de publicación para que la app se sirva correctamente en Vercel.
+
+---
+
+## Tecnologías utilizadas
+
+- HTML5 para la estructura de las páginas
+- CSS3 con diseño responsive y temas visuales
+- JavaScript moderno para la lógica de negocio y UI
+- Google Apps Script como backend
+- IndexedDB para almacenamiento offline
+- localStorage para datos de sesión y preferencias
+- fetch API para comunicación con el servidor
+- Formspree para el formulario de contacto
+- DolarAPI para cotizaciones del dólar
+
+---
+
+## Flujo de uso general
+
+1. El usuario ingresa a la app desde la página principal.
+2. Puede registrar una visita técnica o navegar a institucional, informes o jefatura.
+3. Si hay conexión, los datos se envían al backend.
+4. Si no hay conexión, se guardan localmente y se sincronizan luego.
+5. Los responsables pueden consultar estadísticas y documentos desde el panel de jefatura o informes.
+
+---
+
+## Requisitos para correr el proyecto
+
+- navegador moderno
+- conexión a internet para sincronización con el backend
+- acceso a Google Apps Script configurado con las funciones necesarias
+
+### Ejecución local
+
+Puedes abrir la carpeta principal desde VS Code y ejecutar la app con Live Server o simplemente abrir el archivo principal en el navegador.
+
+```text
+www/index.html
 ```
 
 ---
 
-## 🔒 Autenticación y Seguridad
+## Configuración recomendada
 
-### Contraseña para Jefatura/Tapizados
-- Se valida contra Google Apps Script
-- Se guarda en `localStorage` como `auth_jefatura` o `auth_tapizados`
-- Cierra sesión si se recarga la página
+Los puntos más importantes para dejar la app funcionando son:
 
-### URLs Protegidas
-```javascript
-// En index.html, parámetro ?vista=
-- ?vista=jefatura → Requiere password
-- ?vista=tapizados → Requiere password
-- Informes/ → Requiere password
-```
-
----
-
-## 🎯 Casos de Uso
-
-### 1. Técnico registra una visita (Sin conexión)
-1. Abre la app (offline mode)
-2. Completa el formulario
-3. Toca "Enviar"
-4. Datos se guardan en IndexedDB
-5. Recupera conexión → sincroniza automáticamente
-
-### 2. Jefe revisa estadísticas del mes
-1. Abre la app → toca botón "Jefatura"
-2. Ingresa contraseña
-3. Ve calendario interactivo con visitas
-4. Consulta estadísticas por zona
-
-### 3. Operador crea un presupuesto
-1. Entra a "Informes"
-2. Selecciona "Presupuestos Reparación"
-3. Agrega ítems con precios
-4. Calcula automáticamente IVA
-5. Guarda y genera número de factura
-
-### 4. Cliente consulta servicios
-1. Entra desde el link de bienvenida
-2. Ve "Institucional"
-3. Revisa reseñas, video, servicios
-4. Completa formulario de contacto vía Formspree
+- definir correctamente la URL del backend en los archivos de configuración
+- asegurar que el service worker se actualice cuando haya cambios en producción
+- revisar las credenciales de acceso para las secciones protegidas
+- confirmar que las funciones del backend existan para:
+  - registrar visitas
+  - verificar contraseña
+  - obtener historial
+  - obtener documentos y abonos
+  - devolver stock/productos si la vista institucional lo requiere
 
 ---
 
-## 📱 Diseño Responsivo
+## Notas importantes
 
-- **Desktop**: Layout completo con navegación horizontal
-- **Tablet**: Ajustes de grid y espaciado
-- **Móvil**: Navegación inferior, stack vertical, botones grandes
-
-**Breakpoints CSS**:
-- `@media (max-width: 1024px)` - Tablet
-- `@media (max-width: 768px)` - Móvil
+- la app está pensada para operar tanto online como offline
+- la experiencia de navegación está dividida por módulos para separar operación técnica, administración y documentación
+- el proyecto está preparado para crecer con nuevas vistas o nuevas integraciones sin reescribir toda la lógica
 
 ---
 
-## 🐛 Troubleshooting
+## Resumen rápido
 
-| Problema | Solución |
-|----------|----------|
-| No aparece el dot de estado | Verifica `nav-dot` en HTML |
-| Contraseña no funciona | Revisa API_URL y función `verificarPassword` en Google Apps Script |
-| Datos no se sincronizan | Comprueba conexión de internet y API_URL |
-| Formulario no guarda | Asegúrate que IndexedDB está habilitado en el navegador |
-| Modal de actualización no cierra | Limpia `localStorage` |
-
----
-
-## 📝 Versión
-
-- **App Version**: 8
-- **Fecha de actualización**: Marzo 2026
-- **Autor**: Support Fitness
+- Página principal: registro y seguimiento de visitas
+- Institucional: presentación, tienda y acceso técnico
+- Jefatura: control operativo y métricas
+- Informes: documentos, presupuestos y abonos
+- Navegación: compartida entre todas las páginas
+- PWA: soporte offline y despliegue más robusto
 
 ---
 
-## 📞 Contacto y Soporte
+## Autor y mantenimiento
 
-- **Email**: facundo20102005@gmail.com
-- **Teléfono**: Mi numero
-- **Ubicación**: Buenos Aires, Argentina
-
----
-
-## 📄 Licencia
+Proyecto desarrollado para Support Fitness con enfoque en operación técnica, documentación y gestión comercial.
 
 **Uso Privado** — Support Fitnes © 2026. Todos los derechos reservados.
