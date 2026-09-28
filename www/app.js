@@ -731,19 +731,41 @@ function cerrarRegistro() { const modal = document.getElementById('modalRegistro
 function mostrarStatus(mensaje, tipoClase) { const statusDiv = document.getElementById("status"); statusDiv.innerHTML = mensaje; statusDiv.className = "status mostrar " + tipoClase; }
 
 function validarYEnviar() {
+    // --- 🛠️ PARCHE DEFINITIVO: AUTO-AGREGAR MOTIVO ---
+    const inputDetalle = document.getElementById("otroMotivo");
+    if (inputDetalle && inputDetalle.value.trim() !== "") {
+        const nuevoMotivo = inputDetalle.value.trim();
+        
+        // Creamos un checkbox oculto y marcado para que la app lo lea automáticamente
+        const hiddenCheckbox = document.createElement("input");
+        hiddenCheckbox.type = "checkbox";
+        hiddenCheckbox.className = "motivo"; // Misma clase que los botones de arriba
+        hiddenCheckbox.value = nuevoMotivo;
+        hiddenCheckbox.checked = true;
+        hiddenCheckbox.style.display = "none";
+        
+        inputDetalle.parentElement.appendChild(hiddenCheckbox);
+        
+        // Vaciamos el input visualmente para que el técnico note que se procesó
+        inputDetalle.value = "";
+    }
+    // --------------------------------------------------
+
     document.getElementById("status").className = "status"; 
     document.getElementById("tecnico").classList.remove("error-input"); 
     document.getElementById("buscador").classList.remove("error-input"); 
     document.getElementById("otroGimnasio").classList.remove("error-input"); 
     document.getElementById("card-motivo").style.border = "none";
-    document.getElementById("card-archivo").style.border = "none"; // Reset visual de fotos
+    document.getElementById("card-archivo").style.border = "none";
 
     const tecnico = document.getElementById("tecnico").value.trim(); 
     const buscadorVal = document.getElementById("buscador").value.trim(); 
     const otroGimVal = document.getElementById("otroGimnasio").value.trim(); 
     const gimnasioCompleto = buscadorVal || otroGimVal; 
+    
+    // Validamos si hay algún checkbox marcado (incluyendo el oculto que acabamos de crear)
     const algunMotivoTildado = document.querySelectorAll(".motivo:checked").length > 0; 
-    const otroMotivoEscrito = document.getElementById("otroMotivo").value.trim() !== "";
+    const otroMotivoEscrito = (typeof window.otrosMotivosArray !== 'undefined' && window.otrosMotivosArray.length > 0);
 
     let errores = []; 
     if (!tecnico) { errores.push("Técnico"); document.getElementById("tecnico").classList.add("error-input"); } 
@@ -751,8 +773,7 @@ function validarYEnviar() {
     else if (!gimnasioCompleto) { errores.push("Gimnasio"); document.getElementById("buscador").classList.add("error-input"); document.getElementById("otroGimnasio").classList.add("error-input"); } 
     if (!algunMotivoTildado && !otroMotivoEscrito) { errores.push("Motivo"); document.getElementById("card-motivo").style.border = "2px solid #d93025"; }
 
-    // 🔴 NUEVA VALIDACIÓN: REMITO OBLIGATORIO
-    if (window.gymRequiereRemito && window.archivosSeleccionados.length === 0) {
+    if (window.gymRequiereRemito && (!window.archivosSeleccionados || window.archivosSeleccionados.length === 0)) {
         errores.push("Foto del Remito (Es obligatorio para este gimnasio)");
         document.getElementById("card-archivo").style.border = "2px solid #d93025";
         document.getElementById("card-archivo").style.borderRadius = "14px";
@@ -1124,3 +1145,231 @@ function forzarRefreshHistorial() {
         if(titulo) titulo.innerHTML = 'Error de red ❌';
     });
 }
+// =========================================================
+// BURBUJA DE ÚLTIMOS 10 REGISTROS DEL TÉCNICO
+// =========================================================
+async function cargarUltimasVisitasTecnico(tecnico) {
+    try {
+        const result = await llamarAPI({
+            accion: 'obtenerUltimasCargasTecnico',
+            payload: { tecnico: tecnico }
+        });
+        
+        const content = document.getElementById('burbuja-tecnico-content');
+        if(!content) return;
+
+        if (result && result.length > 0) {
+            let html = '<div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">';
+            result.forEach(item => {
+                
+                // LÓGICA DE VISTA PREVIA IDÉNTICA A "INFORMES"
+                let fotosHtml = '';
+                if (item.fotosLinks && item.fotosLinks.length > 0) {
+                    const primeraFoto = item.fotosLinks[0];
+                    
+                    // Convertir link de Drive a modo Vista Previa
+                    let previewUrl = primeraFoto;
+                    if(previewUrl.includes('/view')) {
+                        previewUrl = previewUrl.replace(/\/view.*/, '/preview');
+                    } else if (previewUrl.includes('open?id=')) {
+                        previewUrl = previewUrl.replace('open?id=', 'file/d/') + '/preview';
+                    }
+
+                    // Si no hay link de carpeta específico, mandamos al link de la primera foto
+                    const urlCarpeta = item.carpeta || primeraFoto;
+
+                    fotosHtml = `
+                    <details style="margin-top: 12px; cursor: pointer; outline: none;">
+                        <summary style="color: #7fa0b8; font-size: 0.85rem; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 6px; user-select: none;">
+                            <span style="color: #3b82f6; font-size: 0.7rem;">▶</span> 📷 Vista previa del remito — clic para ver
+                        </summary>
+                        
+                        <div style="margin-top: 10px; background: #181c1f; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08);">
+                            <!-- Visor Iframe -->
+                            <div style="width: 100%; height: 280px; background: #20262b; display: flex; justify-content: center; align-items: center;">
+                                <iframe src="${previewUrl}" width="100%" height="100%" style="border: none;"></iframe>
+                            </div>
+                            
+                            <!-- Botones inferiores -->
+                            <div style="display: flex; gap: 10px; padding: 12px; background: #20262b; border-top: 1px solid rgba(255,255,255,0.05);">
+                                <a href="${primeraFoto}" target="_blank" style="flex: 1; text-align: center; background: rgba(255,255,255,0.03); color: #7fa0b8; padding: 10px; border-radius: 8px; text-decoration: none; font-size: 0.8rem; font-weight: 600; border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s;">
+                                    🖼️ Ver foto completa
+                                </a>
+                                <a href="${urlCarpeta}" target="_blank" style="flex: 1; text-align: center; background: rgba(255,255,255,0.03); color: #7fa0b8; padding: 10px; border-radius: 8px; text-decoration: none; font-size: 0.8rem; font-weight: 600; border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s;">
+                                    📁 Ver todas las fotos
+                                </a>
+                            </div>
+                        </div>
+                    </details>`;
+                } else {
+                    fotosHtml = `<div style="color: #65706e; font-size: 0.75rem; margin-top: 10px; font-weight: 600;">🚫 Sin imágenes adjuntas</div>`;
+                }
+
+                html += `
+                    <div style="background: #20262b; padding: 14px; border-radius: 10px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <span style="color: #ffffff; font-weight: bold; font-size: 0.95rem; line-height: 1.2;">${item.gym}</span>
+                            <span style="background: rgba(127, 160, 184, 0.1); color: #7fa0b8; padding: 3px 6px; border-radius: 6px; font-size: 0.7rem; white-space: nowrap; margin-left: 10px; font-family: monospace;">${item.fecha ? item.fecha.split(' ')[0] : ''}</span>
+                        </div>
+                        <div style="color: #dde2e0; font-size: 0.85rem; line-height: 1.4; opacity: 0.9;"><strong>Motivo:</strong> ${item.motivo}</div>
+                        ${fotosHtml}
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            // Un poco de CSS oculto para borrar la flechita fea por defecto del details en algunos celulares
+            html += `<style>details > summary::-webkit-details-marker { display: none; }</style>`;
+            
+            content.innerHTML = html;
+        } else {
+            content.innerHTML = `<div style="color: #7fa0b8; font-size: 0.9rem; text-align: center; margin-top: 25px; padding-bottom: 10px;">Todavía no tenés cargas registradas.</div>`;
+        }
+    } catch (e) {
+        document.getElementById('burbuja-tecnico-content').innerHTML = `<div style="color: #dd4c1c; font-size: 0.85rem; text-align: center; margin-top: 20px;">Error al conectar con la base de datos.</div>`;
+    }
+}
+
+// Función para abrir y cerrar la burbuja
+window.toggleBurbujaTecnico = function() {
+    const content = document.getElementById('burbuja-tecnico-content');
+    const icon = document.getElementById('burbuja-tecnico-icon');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+// Disparadores Automáticos
+document.addEventListener("DOMContentLoaded", () => {
+    // Actualizar cuando el técnico cambie de nombre manualmente
+    const inputTecnico = document.getElementById('tecnico');
+    if(inputTecnico) {
+        inputTecnico.addEventListener('blur', cargarUltimasVisitasTecnico);
+    }
+    
+    // Ejecutar solo si ya tiene el nombre guardado previamente (después de 1 seg para asegurar que cargó la app)
+    setTimeout(() => {
+        if (inputTecnico && inputTecnico.value.trim() !== "") {
+            cargarUltimasVisitasTecnico();
+        }
+    }, 1500);
+});
+// =========================================================
+// BURBUJA DE ÚLTIMAS 10 CARGAS DEL TÉCNICO (SISTEMA ROBUSTO)
+// =========================================================
+
+// =========================================================
+// BURBUJA DE ÚLTIMAS 10 CARGAS DEL TÉCNICO (PREMIUM UX)
+// =========================================================
+
+function verificarEInyectarBurbuja() {
+    const techName = localStorage.getItem("tecnico");
+    if (!techName) return; 
+    
+    if (document.getElementById('burbuja-historial-tecnico')) return;
+
+    const elementosDiv = document.querySelectorAll('div');
+    let tarjetaTecnico = null;
+    
+    for (let el of elementosDiv) {
+        if (el.innerText && el.innerText.includes('Técnico registrado') && el.innerText.includes(techName)) {
+            tarjetaTecnico = el.closest('.card') || el.closest('fieldset') || el.closest('div[style*="border"]');
+            if (tarjetaTecnico) break;
+        }
+    }
+    
+    if (!tarjetaTecnico) return;
+
+    let burbuja = document.createElement('div');
+    burbuja.id = 'burbuja-historial-tecnico';
+    burbuja.style.cssText = 'margin-top: 15px; margin-bottom: 25px; background: #181c1f; border: 1px solid #3d5a73; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
+    tarjetaTecnico.after(burbuja);
+
+    burbuja.innerHTML = `
+        <div onclick="toggleBurbujaTecnico()" style="padding: 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: linear-gradient(180deg, #20262b, #181c1f); border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.3rem;">📋</span>
+                <span style="color: #eef1ef; font-weight: 600; font-size: 0.95rem;">Tus últimos 10 registros</span>
+            </div>
+            <span id="burbuja-tecnico-icon" style="color: #ff6a39; transition: transform 0.3s; font-size: 1rem; font-weight: bold;">▼</span>
+        </div>
+        <div id="burbuja-tecnico-content" style="display: none; padding: 0 16px 16px; max-height: 400px; overflow-y: auto; background: #181c1f;">
+            <div class="text-center py-4"><span style="color: #7fa0b8; font-weight: 600; font-size: 0.9rem;">Consultando historial en la base... ⏳</span></div>
+        </div>
+    `;
+    
+    cargarUltimasVisitasTecnico(techName);
+}
+
+async function cargarUltimasVisitasTecnico(tecnico) {
+    try {
+        const result = await llamarAPI({
+            accion: 'obtenerUltimasCargasTecnico',
+            payload: { tecnico: tecnico }
+        });
+        
+        const content = document.getElementById('burbuja-tecnico-content');
+        if(!content) return;
+
+        if (result && result.length > 0) {
+            let html = '<div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">';
+            result.forEach(item => {
+                
+                // Generar los botones para ver imágenes
+                let fotosHtml = '';
+                if (item.fotosLinks && item.fotosLinks.length > 0) {
+                    fotosHtml = `<div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">`;
+                    item.fotosLinks.forEach((link, idx) => {
+                        fotosHtml += `
+                        <a href="${link}" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; background: rgba(47, 125, 85, 0.15); color: #4ade80; padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; text-decoration: none; font-weight: 700; border: 1px solid rgba(47, 125, 85, 0.4); transition: all 0.2s;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            Ver Foto ${idx + 1}
+                        </a>`;
+                    });
+                    fotosHtml += `</div>`;
+                } else {
+                    fotosHtml = `
+                    <div style="color: #65706e; font-size: 0.75rem; margin-top: 10px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34m-7.72-2.06a4 4 0 1 1-5.56-5.56"></path></svg>
+                        Sin imágenes adjuntas
+                    </div>`;
+                }
+
+                html += `
+                    <div style="background: #20262b; padding: 14px; border-radius: 10px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <span style="color: #ffffff; font-weight: bold; font-size: 0.95rem; line-height: 1.2;">${item.gym}</span>
+                            <span style="background: rgba(127, 160, 184, 0.1); color: #7fa0b8; padding: 3px 6px; border-radius: 6px; font-size: 0.7rem; white-space: nowrap; margin-left: 10px; font-family: monospace;">${item.fecha.split(' ')[0]}</span>
+                        </div>
+                        <div style="color: #dde2e0; font-size: 0.85rem; line-height: 1.4; opacity: 0.9;"><strong>Motivo:</strong> ${item.motivo}</div>
+                        ${fotosHtml}
+                    </div>
+                `;
+            });
+            html += '</div>';
+            content.innerHTML = html;
+        } else {
+            content.innerHTML = `<div style="color: #7fa0b8; font-size: 0.9rem; text-align: center; margin-top: 25px; padding-bottom: 10px;">Todavía no tenés cargas registradas.</div>`;
+        }
+    } catch (e) {
+        document.getElementById('burbuja-tecnico-content').innerHTML = `<div style="color: #dd4c1c; font-size: 0.85rem; text-align: center; margin-top: 20px;">Error al conectar con la base de datos.</div>`;
+    }
+}
+
+window.toggleBurbujaTecnico = function() {
+    const content = document.getElementById('burbuja-tecnico-content');
+    const icon = document.getElementById('burbuja-tecnico-icon');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+setInterval(verificarEInyectarBurbuja, 2000);

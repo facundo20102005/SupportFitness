@@ -18,12 +18,12 @@
         El parámetro no altera el contenido del archivo, solo invalida la caché.
         Versión actual: v7 (19/05/2025)
     -->
-    <script src="inf-config.js?v=10"></script>    <!-- Constantes, API_URL, precios   -->
-    <script src="inf-api.js?v=10"></script>        <!-- llamarAPI, auth, obtenerDolar   -->
-    <script src="inf-ui.js?v=10"></script>         <!-- setModoApp, burbuja, cargarApp  -->
-    <script src="inf-docs.js?v=10"></script>       <!-- docs, items, PDF, modales       -->
-    <script src="inf-abonos.js?v=10" defer></script> <!-- abonos mensuales            -->
-    <script src="inf-reparaciones.js?v=10" defer></script> <!-- asesor de reparaciones    -->
+    <script src="inf-config.js?v=14"></script>    <!-- Constantes, API_URL, precios   -->
+    <script src="inf-api.js?v=14"></script>        <!-- llamarAPI, auth, obtenerDolar   -->
+    <script src="inf-ui.js?v=14"></script>         <!-- setModoApp, burbuja, cargarApp  -->
+    <script src="inf-docs.js?v=14"></script>       <!-- docs, items, PDF, modales       -->
+    <script src="inf-abonos.js?v=14" defer></script> <!-- abonos mensuales            -->
+    <script src="inf-reparaciones.js?v=14" defer></script> <!-- asesor de reparaciones    -->
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -1016,23 +1016,6 @@
                             <h2 style="font-size:17px; font-weight:900; color:var(--inf-azul); margin:0;" id="titulo-guardados">📁 Documentos Guardados</h2>
                             <p style="font-size:13px; color:var(--inf-sub); margin:0;" id="desc-guardados">Facturas y presupuestos en la nube.</p>
                         </div>
-                        <!-- FIX 4: Botón AUDITORÍA -->
-                        <button onclick="abrirAuditoria()"
-                                style="padding:8px 14px; background:rgba(239,68,68,0.1); color:#f87171;
-                                       border:1.5px solid rgba(239,68,68,0.3); border-radius:10px;
-                                       font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap;
-                                       display:flex; align-items:center; gap:6px; transition:all 0.2s;"
-                                title="Ver facturas con errores o inconsistencias en el algoritmo">
-                            🔍 Auditoría
-                        </button>
-                        <button onclick="verHistorialPDFs()"
-                                style="padding:8px 14px; background:rgba(26,115,232,0.1); color:var(--inf-azul);
-                                       border:1.5px solid rgba(26,115,232,0.3); border-radius:10px;
-                                       font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap;
-                                       display:flex; align-items:center; gap:6px; transition:all 0.2s;"
-                                title="Ver historial de PDFs exportados en este dispositivo">
-                            🗂️ Historial PDFs
-                        </button>
                         <button onclick="generarPDFListaMensual()"
                                 style="padding:8px 14px; background:rgba(124,58,237,0.1); color:#7c3aed;
                                        border:1.5px solid rgba(124,58,237,0.3); border-radius:10px;

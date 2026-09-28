@@ -1017,32 +1017,11 @@ async function renderizarVistaReparaciones() {
         const timeout = (typeof SF_TIMEOUT !== 'undefined' && SF_TIMEOUT.REPARACIONES) ? SF_TIMEOUT.REPARACIONES : 35000;
         visitas = await llamarAPI({ accion: "obtenerReparacionesPendientes", payload: { dias: 90 } }, timeout);
         
-        try {
-            const emitidos = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: "Presupuestos_Emitidos" } }, timeout);
-            if (Array.isArray(emitidos)) {
-                emitidos.forEach(p => {
-                    if (p.tipoDoc === "Abono" || p.tipo === "Abono" || String(p.items?.[0]?.desc || '').toLowerCase().includes('mantenimiento preventivo')) return; 
-                    
-                    const yaExiste = visitas.some(v => (v.remito && v.remito === p.remito) || (v.gym === String(p.cliente).toUpperCase() && v.fechaStr === p.fecha));
-                    if (!yaExiste) {
-                        visitas.push({
-                            fechaStr: p.fecha || p.fechaVisita || 'Sin Fecha',
-                            gym: String(p.cliente || 'GIMNASIO IMPORTADO').toUpperCase().trim(),
-                            tecnico: 'Presupuestar Web',
-                            motivo: p.items && p.items[0] ? p.items[0].desc : 'Presupuesto creado desde módulo de presupuestar',
-                            remito: p.remito || '',
-                            facturado: p.numFactura || p.factura || p.estado || 'presupuestado',
-                            pago: p.pagado || 'Pendiente',
-                            necesitaRep: true,
-                            totalARCA: Number(p.total || 0),
-                            foto: '',
-                            linkCarpeta: '',
-                            esVirtualPpto: true
-                        });
-                    }
-                });
-            }
-        } catch(err) { console.warn("No se pudieron cargar los presupuestos emitidos"); }
+        // Los presupuestos emitidos (hoja Presupuestos_Emitidos) ya NO se agregan como visitas:
+        // esa hoja es un registro de PDFs/facturas emitidos, no de visitas, y leerla con
+        // obtenerDocumentosBD corría las columnas y generaba tarjetas fantasma
+        // ("FACTURA B N°xxxx", "SIN FECHA 0000", "GIMNASIO IMPORTADO").
+        // El vínculo con las facturas reales se hace por remito en obtenerReparacionesPendientes.
         
     } catch(e) {
         // SIN MENSAJES EN CONSOLA - Carga desde memoria si el backend tarda mucho
