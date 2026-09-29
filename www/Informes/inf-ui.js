@@ -388,6 +388,11 @@ function formatearFechaManual(e) {
 }
 
 function setModoApp(modo) {
+    // 🔥 AGREGA ESTAS 3 LÍNEAS AL PRINCIPIO:
+    if (typeof modoApp !== 'undefined' && modoApp !== modo) {
+        documentosGuardados = []; // Borra la memoria al cambiar de pestaña
+    }
+
     modoApp = modo;
     
     const msjInicial = document.getElementById('mensaje-inicial');
@@ -464,9 +469,8 @@ function setModoApp(modo) {
             if (tabC) {
                 const tabRep = document.createElement('button');
                 tabRep.id = 'tab-reparaciones';
-                tabRep.className = 'tab-btn';
+                tabRep.className = 'sub-tab';
                 tabRep.innerHTML = '🔧 Presupuestar';
-                tabRep.style.cssText = 'flex:1;padding:12px 8px;background:rgba(255,255,255,0.05);color:#f1f5f9;border:none;font-size:14px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;';
                 tabRep.onclick = function() { switchTab('reparaciones'); };
                 tabC.parentNode.appendChild(tabRep);
             }

@@ -110,54 +110,60 @@ document.addEventListener('click', (e) => {
         if(box) box.style.display = 'none';
     }
 });
-async function obtenerYRenderizarCreados() {
+// 🔥 ACTUALIZACIÓN: Hace que la carga de "Ver Guardados" sea INSTANTÁNEA
+async function obtenerYRenderizarCreados(forzarRecarga = false) {
     const contenedor = document.getElementById('contenedor-informes-creados');
     if (!contenedor) return;
 
-    // Skeleton loader con CSS (más limpio, sin inline styles)
-    contenedor.innerHTML = `
-        <div style="padding:12px 0;">
-            ${[1,2,3].map(() => `
-            <div style="background:var(--inf-card,rgba(255,255,255,0.03)); border-radius:14px; padding:16px; margin-bottom:10px; border:1px solid var(--inf-border,rgba(255,255,255,0.06));">
-                <div class="inf-skeleton inf-skeleton-line inf-skeleton-line--medium" style="margin-bottom:10px;"></div>
-                <div class="inf-skeleton inf-skeleton-line inf-skeleton-line--short"></div>
-            </div>`).join('')}
-        </div>`;
-
-    const hojaReq = modoApp === 'ofertas' ? HOJA_OFERTAS : HOJA_PRESUPUESTOS;
-
-    try {
-        documentosGuardados = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: hojaReq } });
-        _invalidarCuitSet();
-        renderizarTarjetas();
-    } catch(e) {
-        const esRedeploy = e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'));
-        const mensajeError = esRedeploy
-            ? 'Sin conexión con el servidor de Google. Verificá tu internet.'
-            : (e.message || 'Error desconocido');
-
+    // Si no tenemos documentos o forzamos recarga, pedimos al servidor
+    if (forzarRecarga || !documentosGuardados || documentosGuardados.length === 0) {
         contenedor.innerHTML = `
-            <div style="padding:24px 20px; text-align:center; background:var(--inf-rojo-lt,#fce8e6);
-                 border-radius:14px; border:1px solid rgba(217,48,37,0.3); margin-top:8px;">
-                <div style="font-size:28px; margin-bottom:10px;">🔌</div>
-                <div style="font-weight:900; font-size:15px; color:#d93025; margin-bottom:6px;">Error de conexión</div>
-                <div style="font-size:13px; color:#5f6368; margin-bottom:16px; font-family:monospace; background:rgba(0,0,0,0.05);
-                     padding:8px 12px; border-radius:8px; text-align:left; word-break:break-all;">
-                    ${mensajeError}
-                </div>
-                <div style="font-size:13px; color:#475467; margin-bottom:16px; text-align:left; line-height:1.7;">
-                    <b>Causas comunes:</b><br>
-                    1️⃣ El Apps Script no está desplegado como <b>"Acceso: Cualquier persona"</b><br>
-                    2️⃣ Agregaste funciones nuevas al Backend y no lo <b>volviste a desplegar</b><br>
-                    3️⃣ La URL del script en <code>API_URL</code> es incorrecta
-                </div>
-                <button onclick="obtenerYRenderizarCreados()"
-                        style="background:#1a73e8; color:white; border:none; padding:12px 24px;
-                               border-radius:10px; font-weight:900; font-size:14px; cursor:pointer;">
-                    🔄 Reintentar
-                </button>
+            <div style="padding:12px 0;">
+                ${[1,2,3].map(() => `
+                <div style="background:var(--inf-card,rgba(255,255,255,0.03)); border-radius:14px; padding:16px; margin-bottom:10px; border:1px solid var(--inf-border,rgba(255,255,255,0.06));">
+                    <div class="inf-skeleton inf-skeleton-line inf-skeleton-line--medium" style="margin-bottom:10px;"></div>
+                    <div class="inf-skeleton inf-skeleton-line inf-skeleton-line--short"></div>
+                </div>`).join('')}
             </div>`;
+
+        const hojaReq = modoApp === 'ofertas' ? HOJA_OFERTAS : HOJA_PRESUPUESTOS;
+
+        try {
+            documentosGuardados = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: hojaReq } });
+            _invalidarCuitSet();
+        } catch(e) {
+            const esRedeploy = e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'));
+            const mensajeError = esRedeploy
+                ? 'Sin conexión con el servidor de Google. Verificá tu internet.'
+                : (e.message || 'Error desconocido');
+
+            contenedor.innerHTML = `
+                <div style="padding:24px 20px; text-align:center; background:var(--inf-rojo-lt,#fce8e6);
+                     border-radius:14px; border:1px solid rgba(217,48,37,0.3); margin-top:8px;">
+                    <div style="font-size:28px; margin-bottom:10px;">🔌</div>
+                    <div style="font-weight:900; font-size:15px; color:#d93025; margin-bottom:6px;">Error de conexión</div>
+                    <div style="font-size:13px; color:#5f6368; margin-bottom:16px; font-family:monospace; background:rgba(0,0,0,0.05);
+                         padding:8px 12px; border-radius:8px; text-align:left; word-break:break-all;">
+                        ${mensajeError}
+                    </div>
+                    <div style="font-size:13px; color:#475467; margin-bottom:16px; text-align:left; line-height:1.7;">
+                        <b>Causas comunes:</b><br>
+                        1️⃣ El Apps Script no está desplegado como <b>"Acceso: Cualquier persona"</b><br>
+                        2️⃣ Agregaste funciones nuevas al Backend y no lo <b>volviste a desplegar</b><br>
+                        3️⃣ La URL del script en <code>API_URL</code> es incorrecta
+                    </div>
+                    <button onclick="obtenerYRenderizarCreados(true)"
+                            style="background:#1a73e8; color:white; border:none; padding:12px 24px;
+                                   border-radius:10px; font-weight:900; font-size:14px; cursor:pointer;">
+                        🔄 Reintentar
+                    </button>
+                </div>`;
+            return; // Cortar ejecución si falla
+        }
     }
+    
+    // Si ya teníamos los datos precargados, los dibuja instantáneamente
+    renderizarTarjetas();
 }
 
 // 🔥 FUNCIÓN TRADUCTORA DE FECHAS GOOGLE 🔥
@@ -175,7 +181,7 @@ function limpiarFecha(fechaRaw) {
 }
 
 // 🔥 VARIABLES GLOBALES PARA LOS FILTROS (Pegar donde estaba renderizarTarjetas) 🔥
-let filtroPagoActual = 'Pendiente';
+let filtroPagoActual = 'Todos';   // ← inicia mostrando TODO (antes: 'Pendiente')
 let filtroMesActual = 'Todos';
 
 function setFiltroPago(valor) {
@@ -351,6 +357,55 @@ function _estadoOperativo(doc) {
 //  📄 VER PDF — busca la factura en la carpeta Drive "Facturas Support"
 //  por número de factura y la muestra como vista previa.
 // ════════════════════════════════════════════════════════════════
+// ── Caché de PDFs (en memoria): la 2ª vez que se abre una factura es instantáneo ──
+const _pdfCache    = new Map();   // clave -> { res, url }   (url = blob: ya decodificado)
+const _pdfPromesas = new Map();   // clave -> Promise en vuelo (evita pedir dos veces lo mismo)
+const _PDF_CACHE_MAX = 12;
+
+function _pdfClave(doc, fileId) { return String(doc.numFactura || '').trim() + '|' + (fileId || ''); }
+
+function _base64ABlobUrl(b64, mime) {
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([arr], { type: mime || 'application/pdf' }));
+}
+
+function _cargarPDFFactura(doc, fileId) {
+    const clave = _pdfClave(doc, fileId);
+    if (_pdfCache.has(clave))    return Promise.resolve(_pdfCache.get(clave));
+    if (_pdfPromesas.has(clave)) return _pdfPromesas.get(clave);
+
+    const p = llamarAPI({
+        accion: 'obtenerFacturaPDFDrive',
+        payload: { numFactura: String(doc.numFactura || '').trim(), cuit: doc.cuit || '', fileId: fileId || '' }
+    }, 60000).then(res => {
+        if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo obtener la factura.');
+        const entry = { res, url: _base64ABlobUrl(res.seleccionado.base64, res.seleccionado.mime) };
+        res.seleccionado.base64 = null;                       // liberar memoria: ya tenemos el blob
+        _pdfCache.set(clave, entry);
+        if (_pdfCache.size > _PDF_CACHE_MAX) {                // descartar el más viejo
+            for (const [k, v] of _pdfCache) {
+                if (k === clave) continue;
+                URL.revokeObjectURL(v.url); _pdfCache.delete(k); break;
+            }
+        }
+        return entry;
+    }).finally(() => _pdfPromesas.delete(clave));
+
+    _pdfPromesas.set(clave, p);
+    return p;
+}
+
+// Se llama al expandir la tarjeta / pasar el mouse por "Ver PDF": empieza a bajar el PDF antes del clic
+function precargarPDFFactura(id) {
+    try {
+        const doc = documentosGuardados.find(d => String(d.id) === String(id));
+        if (!doc || !/\d{4}/.test(String(doc.numFactura || ''))) return;
+        _cargarPDFFactura(doc).catch(() => {});                // silencioso: el error real se muestra al hacer clic
+    } catch (e) {}
+}
+
 async function verPDFFactura(id, btnEl, fileId) {
     const doc = documentosGuardados.find(d => String(d.id) === String(id));
     if (!doc) { mostrarMensaje('❌ Documento no encontrado.', 'error'); return; }
@@ -361,34 +416,34 @@ async function verPDFFactura(id, btnEl, fileId) {
         return;
     }
 
+    // ⚡ Ya descargado (por precarga o por una vista anterior): se abre al instante
+    const enCache = _pdfCache.get(_pdfClave(doc, fileId));
+    if (enCache) { _mostrarVisorFactura(doc, enCache.res, enCache.url); return; }
+
     const textoOriginal = btnEl ? btnEl.innerHTML : '';
-    if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '⏳ Buscando...'; }
+    let reloj = null;
+    if (btnEl) {
+        btnEl.disabled = true;
+        const t0 = Date.now();
+        const pintar = () => { btnEl.innerHTML = `<span class="spinner-mini"></span> Buscando… ${Math.floor((Date.now() - t0) / 1000)}s`; };
+        pintar();
+        reloj = setInterval(pintar, 1000);
+    }
 
     try {
-        const res = await llamarAPI({
-            accion: 'obtenerFacturaPDFDrive',
-            payload: { numFactura: num, cuit: doc.cuit || '', fileId: fileId || '' }
-        }, 60000);
-
-        if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo obtener la factura.');
-        _mostrarVisorFactura(doc, res);
+        const entry = await _cargarPDFFactura(doc, fileId);
+        _mostrarVisorFactura(doc, entry.res, entry.url);
     } catch (e) {
         mostrarMensaje('❌ ' + e.message, 'error');
     } finally {
+        if (reloj) clearInterval(reloj);
         if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = textoOriginal; }
     }
 }
 
-function _mostrarVisorFactura(doc, res) {
+function _mostrarVisorFactura(doc, res, url) {
     document.getElementById('_visor-factura')?.remove();
-    if (window._visorFacturaUrl) { URL.revokeObjectURL(window._visorFacturaUrl); window._visorFacturaUrl = null; }
-
     const sel = res.seleccionado;
-    const bytes = atob(sel.base64);
-    const arr = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([arr], { type: sel.mime || 'application/pdf' }));
-    window._visorFacturaUrl = url;
 
     const otros = (res.archivos || []).length > 1
         ? `<div style="display:flex; gap:6px; flex-wrap:wrap; padding:8px 14px; background:#111827;">
@@ -415,7 +470,7 @@ function _mostrarVisorFactura(doc, res) {
                 <button onclick="document.getElementById('_visor-factura').remove()" style="padding:8px 12px; border-radius:8px; border:none; background:#d93025; color:white; font-weight:900; font-size:12px; cursor:pointer;">✕ Cerrar</button>
             </div>
             ${otros}
-            <iframe src="${url}" style="flex:1; width:100%; border:0; background:#525659;"></iframe>
+            <iframe src="${url}#toolbar=1&navpanes=0&view=FitH" style="flex:1; width:100%; border:0; background:#525659;"></iframe>
         </div>`;
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
@@ -423,17 +478,21 @@ function _mostrarVisorFactura(doc, res) {
 
 function renderizarTarjetas() {
     const contenedor = document.getElementById('contenedor-informes-creados');
+    
+    // 1. 🔥 MAGIA: RECUERDA QUÉ TARJETAS ESTABAN ABIERTAS ANTES DE BORRAR 🔥
+    const tarjetasAbiertas = Array.from(contenedor.querySelectorAll('.doc-expand-v3.abierto'))
+        .map(el => el.closest('.doc-card-v3').getAttribute('data-id'));
+
     contenedor.innerHTML = '';
- 
-    // 1. Auto-nombre por CUIT y parseo de fechas
-        let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
+
+    // 2. Auto-nombre por CUIT y parseo de fechas
+    let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
     documentosGuardados.forEach(d => {
         let clienteStr = String(d.cliente || "Sin Nombre");
         if (d.cuit && !clienteStr.includes("⚠️ IMPORTADO")) cuitDic[d.cuit] = clienteStr;
         d.fechaLimpia = limpiarFecha(d.fecha);
         const partes  = d.fechaLimpia.split('/');
         d.mesAnio     = partes.length === 3 ? `${partes[1]}/${partes[2]}` : "Sin Fecha";
-        // Clasificar tipo una sola vez
         d._tipo = clasificarDocumento(d);
     });
     localStorage.setItem('cuitGlobalDic', JSON.stringify(cuitDic));
@@ -441,8 +500,8 @@ function renderizarTarjetas() {
         if (d.cuit && cuitDic[d.cuit]) d.cliente = cuitDic[d.cuit];
         d.cliente = String(d.cliente || "Sin Nombre");
     });
- 
-    // 2. Buscador
+
+    // 3. Buscador
     const textoBuscado = (document.getElementById('buscador-global')?.value || "").toLowerCase().trim();
     let filtrados = documentosGuardados.filter(d => {
         let itemsStr  = d.items && Array.isArray(d.items) ? d.items.map(i => i.tipo + " " + i.desc).join(" ") : "";
@@ -453,8 +512,8 @@ function renderizarTarjetas() {
         let busqueda = `${d.cliente} ${d.cuit} ${d.fechaLimpia} ${d.total} ${numFactFix} ${tipoFacturaOculto} ${itemsStr}`.toLowerCase();
         return textoBuscado.split(" ").every(p => busqueda.includes(p));
     });
- 
-    // 3. Meses y filtros
+
+    // 4. Meses y filtros
     let mesesSet = new Set();
     filtrados.forEach(d => mesesSet.add(d.mesAnio));
     let mesesArr = Array.from(mesesSet).sort((a, b) => {
@@ -462,10 +521,10 @@ function renderizarTarjetas() {
         let [ma, ya] = a.split('/'); let [mb, yb] = b.split('/');
         return new Date(yb, mb-1) - new Date(ya, ma-1);
     });
- 
+
     if (filtroMesActual !== 'Todos' && !mesesSet.has(filtroMesActual)) filtroMesActual = 'Todos';
- 
-    // 4. Aplicar filtros (pago + mes + TIPO)
+
+    // 5. Aplicar filtros (pago + mes + TIPO)
     let finales = filtrados.filter(d => {
         const pagadoNorm = String(d.pagado || '').trim();
         const matchPago = (filtroPagoActual === 'Todos'
@@ -477,62 +536,57 @@ function renderizarTarjetas() {
             : d._tipo === filtroTipoActual;
         return matchPago && matchMes && matchTipo;
     });
- 
-    // Ordenar de más nuevo a más viejo (y luego Factura descendente)
+
+    // Ordenar de más nuevo a más viejo
     finales.sort((a, b) => {
         if (a.fechaLimpia === "Sin Fecha") return 1;
         if (b.fechaLimpia === "Sin Fecha") return -1;
-        
         let [da, ma, ya] = a.fechaLimpia.split('/');
         let [db, mb, yb] = b.fechaLimpia.split('/');
-        
         let tiempoA = new Date(ya, ma-1, da).getTime();
         let tiempoB = new Date(yb, mb-1, db).getTime();
-        
-        // 1. Fecha descendente
-        if (tiempoA !== tiempoB) {
-            return tiempoB - tiempoA;
-        }
-        
-        // 2. Factura descendente en el mismo día
+        if (tiempoA !== tiempoB) return tiempoB - tiempoA;
         const factA = String(a.numFactura || '').trim();
         const factB = String(b.numFactura || '').trim();
-        
-        return factB.localeCompare(factA); // <-- Acá invertimos el orden
+        return factB.localeCompare(factA);
     });
- 
-    // 5. Chips de mes
+
+    // 6. Chips de mes
     const mesesScrollEl = document.getElementById('meses-scroll');
     if (mesesScrollEl) {
         let chipsHTML = `<button class="mes-chip ${filtroMesActual==='Todos'?'activo':''}" onclick="setFiltroMes('Todos')">Ver todos</button>`;
         mesesArr.forEach(m => {
             chipsHTML += `<button class="mes-chip ${filtroMesActual===m?'activo':''}" onclick="setFiltroMes('${m}')">${m}</button>`;
         });
+        const _prevLeft = mesesScrollEl.scrollLeft;          // no perder la posición al redibujar
         mesesScrollEl.innerHTML = chipsHTML;
+        mesesScrollEl.scrollLeft = _prevLeft;
+        _initMesesScroll(mesesScrollEl);
+        const _act = mesesScrollEl.querySelector('.mes-chip.activo');
+        if (_act && window._mesAnteriorScroll !== filtroMesActual) {
+            mesesScrollEl.scrollTo({ left: Math.max(0, _act.offsetLeft - (mesesScrollEl.clientWidth - _act.offsetWidth) / 2), behavior: 'smooth' });
+        }
+        window._mesAnteriorScroll = filtroMesActual;
+        requestAnimationFrame(() => _actualizarFlechasMeses(mesesScrollEl));
     }
- 
-    // ── NUEVO: Chips de tipo ────────────────────────────────────
-    // Si tienes un elemento con id="tipo-scroll", los chips aparecen ahí.
-    // Si no existe ese elemento, los chips se insertan automáticamente antes del meses-scroll.
+
+    // 7. Chips de tipo
     let tipoScrollEl = document.getElementById('tipo-scroll');
     if (!tipoScrollEl && mesesScrollEl) {
-        // Auto-crear el contenedor si no existe en el HTML
         tipoScrollEl = document.createElement('div');
         tipoScrollEl.id = 'tipo-scroll';
         tipoScrollEl.style.cssText = 'display:flex; gap:6px; overflow-x:auto; padding:4px 0 10px; flex-wrap:wrap;';
-        mesesScrollEl.parentNode.insertBefore(tipoScrollEl, mesesScrollEl);
+        const _refMeses = mesesScrollEl.closest('.meses-wrap') || mesesScrollEl;
+        _refMeses.parentNode.insertBefore(tipoScrollEl, _refMeses);
     }
     if (tipoScrollEl) {
-        // Contar por tipo para mostrar en el chip
         const conteos = { todos: filtrados.length, abono: 0, reparacion: 0, presup_enviado: 0 };
         filtrados.forEach(d => { if (conteos[d._tipo] !== undefined) conteos[d._tipo]++; });
- 
-        // Contar reparaciones sin CUIT (no verificables)
         const sinCuitCount = filtrados.filter(d => d._tipo === 'reparacion' && !String(d.cuit || '').replace(/\D/g,'').length).length;
         const tiposChips = [
-            { val: 'todos',          label: `Todos (${conteos.todos})`,                       color: '#1a73e8' },
-            { val: 'abono',          label: `📅 Abonos (${conteos.abono})`,                   color: '#60a5fa' },
-            { val: 'reparacion',     label: `🔧 Reparaciones (${conteos.reparacion})`,        color: '#4ade80' },
+            { val: 'todos',          label: `Todos (${conteos.todos})`,                   color: '#1a73e8' },
+            { val: 'abono',          label: `📅 Abonos (${conteos.abono})`,               color: '#60a5fa' },
+            { val: 'reparacion',     label: `🔧 Reparaciones (${conteos.reparacion})`,    color: '#4ade80' },
             sinCuitCount > 0 ? { val: 'sin_cuit', label: `⚠️ Sin CUIT (${sinCuitCount})`, color: '#fb923c' } : null,
         ].filter(Boolean);
         tipoScrollEl.innerHTML = tiposChips.map(t => `
@@ -544,40 +598,31 @@ function renderizarTarjetas() {
                 ${t.label}
             </button>`).join('');
     }
- 
-    // 6. Botones filtro pago
+
+    // 8. Botones filtro pago — el aspecto (claro/oscuro) lo define el CSS con la clase .activo
     const filtroMap = { pendiente:'Pendiente', pagado:'Pagado', todos:'Todos' };
     Object.entries(filtroMap).forEach(([k, v]) => {
         const btn = document.getElementById('filtro-' + k);
         if (!btn) return;
         const isActive = filtroPagoActual === v;
-        const colors = {
-            pendiente: { bg: isActive ? '#fce8e6' : '#f4f6f9', col: isActive ? '#d93025' : '#5f6368' },
-            pagado:    { bg: isActive ? '#e6f4ea' : '#f4f6f9', col: isActive ? '#0f9d58' : '#5f6368' },
-            todos:     { bg: isActive ? '#e8f0fe' : '#f4f6f9', col: isActive ? '#1a73e8' : '#5f6368' },
-        };
-        btn.style.background = colors[k].bg;
-        btn.style.color      = colors[k].col;
-        btn.style.boxShadow  = isActive ? '0 2px 8px rgba(0,0,0,0.12)' : 'none';
+        const eraActivo = btn.classList.contains('activo');
+        btn.style.background = ''; btn.style.color = ''; btn.style.boxShadow = '';   // limpiar estilos viejos en línea
+        btn.classList.toggle('activo', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        if (isActive && !eraActivo) { btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop'); }
     });
- 
-    // 7. Paginación
+
+    // 9. Paginación
     const DOCS_POR_PAG = 15;
     if (typeof window._paginaDocsActual === 'undefined') window._paginaDocsActual = 0;
- 
     const _keyFiltro = textoBuscado + filtroPagoActual + filtroMesActual + filtroTipoActual;
     if (window._keyFiltroAnterior !== _keyFiltro) {
         window._paginaDocsActual  = 0;
         window._keyFiltroAnterior = _keyFiltro;
     }
- 
     const totalPags = Math.ceil(finales.length / DOCS_POR_PAG);
-    const paginados = finales.slice(
-        window._paginaDocsActual * DOCS_POR_PAG,
-        (window._paginaDocsActual + 1) * DOCS_POR_PAG
-    );
- 
-    // 8. Tarjetas
+    const paginados = finales.slice(window._paginaDocsActual * DOCS_POR_PAG, (window._paginaDocsActual + 1) * DOCS_POR_PAG);
+
     if (finales.length === 0) {
         contenedor.innerHTML = `<div style="text-align:center; padding:40px 20px; color:#9aa0a6;">
             <div class="inf-empty__icon">🗂️</div>
@@ -585,42 +630,28 @@ function renderizarTarjetas() {
         </div>`;
         return;
     }
- 
+
     paginados.forEach((doc, animIdx) => {
         const estadoReal = doc.estado || "Pendiente";
         const esPagado   = doc.pagado === "Pagado";
-        const estadoNorm = _estadoOperativo(doc); // 'facturado' | 'anulado' | 'sinfacturar'
+        const estadoNorm = _estadoOperativo(doc);
         const colorEst   = estadoNorm === 'facturado' ? "#34a853" : estadoNorm === 'anulado' ? "#f87171" : "#fbbc04";
-        const colorPag   = esPagado ? "#0f9d58" : "#d93025";
-        const bgPag      = esPagado ? "#e6f4ea" : "#fce8e6";
- 
-        const badgeCuit  = doc.cuit
-            ? `<span style="background:#f1f3f4; color:#5f6368; padding:2px 8px; border-radius:8px; font-size:11px; font-weight:700; border:1px solid #e0e0e0; margin-right:4px;">${doc.cuit}</span>`
-            : '';
- 
-        let factStr    = String(doc.numFactura || '');
-        let displayFact = factStr.startsWith("NC ") ? `🔄 NC ${factStr.replace("NC ","")}` : factStr.includes("-") ? `📄 Factura ${factStr}` : factStr ? `📄 ${factStr}` : '';
-        const badgeFact = displayFact ? `<span class="badge-fact">${displayFact}</span>` : '';
- 
-        // ── NUEVO: Badge de tipo de documento ─────────────────
-        const bdgTipo = badgeTipoDoc(doc._tipo, doc);
- 
-        // ── ALERTA ESPECIAL para "sin descripción" ────────────
-        const alertaSinDesc = '';  // clasificación ahora es binaria: abono o reparacion
+        
+        const badgeCuit  = doc.cuit ? `<span style="background:#f1f3f4; color:#5f6368; padding:2px 8px; border-radius:8px; font-size:11px; font-weight:700; border:1px solid #e0e0e0; margin-right:4px;">${doc.cuit}</span>` : '';
+        let factStr      = String(doc.numFactura || '');
+        let displayFact  = factStr.startsWith("NC ") ? `🔄 NC ${factStr.replace("NC ","")}` : factStr.includes("-") ? `📄 Factura ${factStr}` : factStr ? `📄 ${factStr}` : '';
+        const badgeFact  = displayFact ? `<span class="badge-fact">${displayFact}</span>` : '';
+        const bdgTipo    = badgeTipoDoc(doc._tipo, doc);
 
- 
         let maquinasHTML = '';
         if (doc.items && Array.isArray(doc.items)) {
             maquinasHTML = `<ul style="margin:0 0 10px; padding-left:18px; font-size:13px; color:#475467; line-height:1.7;">` +
                 doc.items.map(m => {
-                    let extra = (m.metros && m.terminales)
-                        ? ` <span style="color:#0f9d58; font-size:11px;">(${m.metros}m / ${m.terminales} term.)</span>`
-                        : '';
+                    let extra = (m.metros && m.terminales) ? ` <span style="color:#0f9d58; font-size:11px;">(${m.metros}m / ${m.terminales} term.)</span>` : '';
                     return `<li><b>${m.cant}x ${m.desc||'—'}</b> — ${m.tipo} <span style="color:#d93025; font-size:11px;">($${(m.precio||0).toLocaleString('es-AR')} c/u)</span>${extra}</li>`;
                 }).join('') + `</ul>`;
         }
- 
-        // ── Estados con selects mejorados y botones de pago visuales ──
+
         const esPendientePago = String(doc.pagado || '').trim() !== 'Pagado';
         const esPagadoPago    = !esPendientePago;
         const selectsHTML = modoApp === 'presupuestos' ? `
@@ -658,9 +689,7 @@ function renderizarTarjetas() {
                     </div>
                 </div>
             </div>` : '';
-        // ... acá termina el selectsHTML existente : '';
 
-        // 🔥 CÓDIGO NUEVO A PEGAR 🔥
         const tipoInformeActual = doc._tipo === 'abono' ? 'Abono' : 'Reparación';
         const selectTipoDocHTML = `
             <div style="margin-bottom:12px;">
@@ -673,16 +702,23 @@ function renderizarTarjetas() {
                     <option value="Abono" ${tipoInformeActual === 'Abono' ? 'selected' : ''}>Abono</option>
                 </select>
             </div>`;
- 
+
+        // 🔥 VERIFICA SI LA TARJETA ESTABA ABIERTA ANTES DEL REFRESH 🔥
+        const estabaAbierta = tarjetasAbiertas.includes(String(doc.id));
+        const claseAbierto = estabaAbierta ? 'abierto' : '';
+        const flechaIcono = estabaAbierta ? '▲' : '▼';
+
         const div = document.createElement('div');
         div.className = `doc-card-v3 ${esPagado?'pagado':'pendiente'}`;
+        div.setAttribute('data-id', doc.id); // 🔥 VITAL para recordar si estaba abierta
         div.style.animationDelay = (animIdx * 0.035) + 's';
- 
+
         div.innerHTML = `
             <div class="doc-header-v3" onclick="
                 const body = this.nextElementSibling;
                 const open = body.classList.toggle('abierto');
                 this.querySelector('.arrow').innerText = open ? '▲' : '▼';
+                if (open) precargarPDFFactura(${doc.id});
             ">
                 <div class="inf-flex-1">
                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px;">
@@ -701,17 +737,17 @@ function renderizarTarjetas() {
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                     ${modoApp==='presupuestos' ? `<span class="badge-estado ${esPagado?'pagado':'pendiente'}">${doc.pagado}</span>` : ''}
-                    <span class="arrow" style="font-size:13px; color:#1a73e8; font-weight:800;">▼</span>
+                    <span class="arrow" style="font-size:13px; color:#1a73e8; font-weight:800;">${flechaIcono}</span>
                 </div>
             </div>
-            <div class="doc-expand-v3">
-                ${alertaSinDesc}
+            
+            <div class="doc-expand-v3 ${claseAbierto}">
                 ${maquinasHTML}
                 ${selectsHTML}
                 ${selectTipoDocHTML} 
                 <div style="display:flex; gap:8px; margin-top:4px;">
                     <button class="btn-doc-edit" style="flex:1; min-height:44px;" onclick="editarDocumento(${doc.id})">✏️ Editar</button>
-                    <button onclick="verPDFFactura(${doc.id}, this)"
+                    <button onclick="verPDFFactura(${doc.id}, this)" onmouseenter="precargarPDFFactura(${doc.id})" ontouchstart="precargarPDFFactura(${doc.id})"
                             style="flex:1; padding:11px; background:linear-gradient(135deg,#1a73e8,#1155cc);
                                    color:white; border:none; border-radius:10px; font-weight:900;
                                    font-size:13px; cursor:pointer; box-shadow:0 3px 10px rgba(26,115,232,0.35);
@@ -723,31 +759,28 @@ function renderizarTarjetas() {
         `;
         contenedor.appendChild(div);
     });
- 
-    // Paginación
+
     if (totalPags > 1) {
         const navEl = document.createElement('div');
         navEl.style.cssText = 'display:flex; align-items:center; justify-content:center; gap:10px; padding:18px 0 8px; flex-wrap:wrap;';
- 
+        
         const btnAnterior = document.createElement('button');
         btnAnterior.textContent = '← Anterior';
         btnAnterior.disabled    = window._paginaDocsActual === 0;
         btnAnterior.className   = 'inf-btn inf-btn--gris inf-btn--sm';
         btnAnterior.onclick     = () => { window._paginaDocsActual--; renderizarTarjetas(); contenedor.scrollIntoView({ behavior:'smooth', block:'start' }); };
- 
+        
         const info = document.createElement('span');
         info.style.cssText  = 'font-size:13px; font-weight:700; color:var(--inf-sub,#94a3b8);';
         info.textContent    = `Página ${window._paginaDocsActual + 1} de ${totalPags}  (${finales.length} docs)`;
- 
+        
         const btnSiguiente = document.createElement('button');
         btnSiguiente.textContent = 'Siguiente →';
         btnSiguiente.disabled    = window._paginaDocsActual >= totalPags - 1;
         btnSiguiente.className   = 'inf-btn inf-btn--gris inf-btn--sm';
         btnSiguiente.onclick     = () => { window._paginaDocsActual++; renderizarTarjetas(); contenedor.scrollIntoView({ behavior:'smooth', block:'start' }); };
- 
-        navEl.appendChild(btnAnterior);
-        navEl.appendChild(info);
-        navEl.appendChild(btnSiguiente);
+        
+        navEl.appendChild(btnAnterior); navEl.appendChild(info); navEl.appendChild(btnSiguiente);
         contenedor.appendChild(navEl);
     }
 }
@@ -1119,8 +1152,8 @@ function prepararMail(id) {
 
 
 // ─────────────────────────────────────────────────────────────────
-// 🔥 NUEVO CAMBIO DE ESTADO (Para Múltiples Selects) 🔥
-// Variable para recordar qué presupuesto estamos intentando facturar
+// 🔥 NUEVO CAMBIO DE ESTADO (Actualización Inmediata y Silenciosa) 🔥
+// ─────────────────────────────────────────────────────────────────
 let tempDocParaFactura = null;
 
 async function cambiarEstado(id, nuevoValor, tipoCambiado) {
@@ -1145,30 +1178,36 @@ async function cambiarEstado(id, nuevoValor, tipoCambiado) {
             setTimeout(() => modal.classList.add('mostrar'), 10);
             return; 
         } else {
-            doc.estado = nuevoValor; // p.ej. volver a Facturado un doc que ya tiene número
+            doc.estado = nuevoValor; 
         }
+        
+        // 🔥 ACTUALIZACIÓN INMEDIATA SIN BLOQUEAR PANTALLA 🔥
+        renderizarTarjetas();
+        ejecutarGuardadoDeEstado(doc, true); // Guardado fantasma en Google
+        return;
     }
     
-    if (tipoCambiado === 'pagado') doc.pagado = nuevoValor;
+    if (tipoCambiado === 'pagado') {
+        doc.pagado = nuevoValor;
+        // 🔥 ACTUALIZACIÓN INMEDIATA SIN BLOQUEAR PANTALLA 🔥
+        renderizarTarjetas();
+        ejecutarGuardadoDeEstado(doc, true); // Guardado fantasma en Google
+        return;
+    }
     
-    // 🔥 MAGIA: ACTUALIZACIÓN RÁPIDA DE LA ETIQUETA SIN REINICIAR LA LISTA 🔥
+    // 🔥 ACTUALIZACIÓN RÁPIDA DE LA ETIQUETA SIN REINICIAR LA LISTA 🔥
     if (tipoCambiado === 'tipoDoc') {
         doc.tipoDoc = nuevoValor;
-        doc._tipo = clasificarDocumento(doc); // Actualiza la lógica interna
+        doc._tipo = clasificarDocumento(doc); 
         
-        // Busca la etiqueta exacta en la pantalla y la reemplaza por la nueva al instante
         const badgeViejo = document.getElementById(`badge-tipo-${id}`);
         if (badgeViejo) {
             badgeViejo.outerHTML = badgeTipoDoc(doc._tipo, doc);
         }
         
-        // Guarda en Google Sheets por detrás de forma silenciosa (true)
         ejecutarGuardadoDeEstado(doc, true);
         return;
     }
-    
-    // Si cambiás "Estado" o "Pago", sigue recargando la lista normal
-    ejecutarGuardadoDeEstado(doc);
 }
 
 // Función que se ejecuta si tocás "Guardar" en el cartel de la Factura
@@ -1869,4 +1908,56 @@ async function _generarListaPDFEjecutar() {
         setTimeout(() => URL.revokeObjectURL(url), 5000);
     }
     mostrarMensaje(`✅ Reporte generado exitosamente.`, 'exito');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  📅 BARRA DE DESPLAZAMIENTO DE FECHAS (chips de mes)
+//  · barra visible · flechas ‹ › · rueda del mouse · arrastrar · centra el mes activo
+// ════════════════════════════════════════════════════════════════
+function _actualizarFlechasMeses(el) {
+    const wrap = el && el.closest('.meses-wrap');
+    if (!wrap) return;
+    const hayOverflow = el.scrollWidth > el.clientWidth + 2;
+    wrap.classList.toggle('sin-overflow', !hayOverflow);
+    wrap.classList.toggle('scroll-ini', el.scrollLeft <= 2);
+    wrap.classList.toggle('scroll-fin', el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+}
+
+function scrollMeses(dir) {
+    const el = document.getElementById('meses-scroll');
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(140, el.clientWidth * 0.7), behavior: 'smooth' });
+}
+
+function _initMesesScroll(el) {
+    if (!el || el.dataset.scrollInit) return;
+    el.dataset.scrollInit = '1';
+
+    // Rueda del mouse -> desplazamiento horizontal
+    el.addEventListener('wheel', e => {
+        if (el.scrollWidth <= el.clientWidth) return;
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
+    }, { passive: false });
+
+    // Arrastrar con el mouse
+    let abajo = false, movido = false, x0 = 0, l0 = 0;
+    el.addEventListener('pointerdown', e => {
+        if (e.pointerType !== 'mouse') return;
+        abajo = true; movido = false; x0 = e.clientX; l0 = el.scrollLeft;
+    });
+    window.addEventListener('pointermove', e => {
+        if (!abajo) return;
+        const dx = e.clientX - x0;
+        if (Math.abs(dx) > 4) { movido = true; el.classList.add('arrastrando'); }
+        if (movido) el.scrollLeft = l0 - dx;
+    });
+    window.addEventListener('pointerup', () => {
+        if (!abajo) return;
+        abajo = false; el.classList.remove('arrastrando');
+        setTimeout(() => { movido = false; }, 0);
+    });
+    el.addEventListener('click', e => { if (movido) { e.stopPropagation(); e.preventDefault(); } }, true);
+
+    el.addEventListener('scroll', () => _actualizarFlechasMeses(el), { passive: true });
+    window.addEventListener('resize', () => _actualizarFlechasMeses(el));
 }

@@ -8,6 +8,9 @@
     <link rel="icon" href="../assets/logo.jpeg">
     <link rel="stylesheet" href="../style.css">
     <link rel="stylesheet" href="Informes-style.css">
+    <link rel="preconnect" href="https://script.google.com" crossorigin>
+    <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+    <link rel="dns-prefetch" href="https://script.google.com">
     <script src="../nav.js"></script>
     <!-- ══ Módulos de la app (cargar en orden) ══════════════════ -->
     <!--
@@ -18,12 +21,13 @@
         El parámetro no altera el contenido del archivo, solo invalida la caché.
         Versión actual: v7 (19/05/2025)
     -->
-    <script src="inf-config.js?v=14"></script>    <!-- Constantes, API_URL, precios   -->
-    <script src="inf-api.js?v=14"></script>        <!-- llamarAPI, auth, obtenerDolar   -->
-    <script src="inf-ui.js?v=14"></script>         <!-- setModoApp, burbuja, cargarApp  -->
-    <script src="inf-docs.js?v=14"></script>       <!-- docs, items, PDF, modales       -->
-    <script src="inf-abonos.js?v=14" defer></script> <!-- abonos mensuales            -->
-    <script src="inf-reparaciones.js?v=14" defer></script> <!-- asesor de reparaciones    -->
+    <!-- ORDEN ESTRICTO DE CARGA -->
+    <script src="inf-config.js?v=15" defer></script>
+    <script src="inf-api.js?v=15" defer></script>
+    <script src="inf-abonos.js?v=15" defer></script>
+    <script src="inf-docs.js?v=15" defer></script>
+    <script src="inf-reparaciones.js?v=15" defer></script>
+    <script src="inf-ui.js?v=15" defer></script>
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -1158,6 +1162,24 @@
 
     <script>
         NavBar.init({ paginaActual: 'informes', mostrarBottomNav: false });
+        // ── AUTORREPARACIÓN: si por caché vieja no cargó inf-api.js, limpia SW + cachés y recarga UNA vez ──
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.llamarAPI === 'function') { sessionStorage.removeItem('sf_heal'); return; }
+            if (sessionStorage.getItem('sf_heal')) {
+                console.error('[Informes] llamarAPI sigue sin definirse tras limpiar cachés: revisá la consola (SyntaxError).');
+                return;
+            }
+            sessionStorage.setItem('sf_heal', '1');
+            (async () => {
+                try {
+                    const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
+                    await Promise.all(regs.map(r => r.unregister()));
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                } catch (e) {}
+                location.reload();
+            })();
+        });
         window.mostrarPreviaImagen = (url) => {
             document.getElementById('modal-img-preview-src').src = url;
             document.getElementById('modal-img-preview').classList.add('open');

@@ -1,18 +1,21 @@
 // ════════════════════════════════════════════════════════════════
-//  Service Worker — Support Fitness PWA
-//  FIXES APLICADOS:
-//  1. Precache con Promise.allSettled: un asset roto ya no cancela todo
-//  2. Listener de 'message' para forzar skipWaiting desde la app
-//  3. CACHE_VER como constante que se debe actualizar al deployar
+//  Service Worker — Support Fitness PWA  (v2: network-first)
+//
+//  POR QUÉ SE VEÍAN ARCHIVOS VIEJOS AUNQUE CAMBIASES CACHE_VER:
+//  1. cache.add(url) pasa por la caché HTTP del navegador. Con el header
+//     "immutable, max-age=1 año" de vercel.json para los .js, el navegador
+//     devolvía la copia vieja y el SW la volvía a guardar en la caché nueva.
+//     (Cambiar el nombre de la caché no toca la caché HTTP.)
+//  2. Los .js/.html/.css se servían Cache-First: si estaban guardados,
+//     jamás se pedían a la red.
+//
+//  AHORA: HTML/JS/CSS = Network-First (siempre lo último; caché solo offline),
+//  el precache ignora la caché HTTP, e imágenes = Cache-First.
 // ════════════════════════════════════════════════════════════════
 
-// IMPORTANTE: Cambiar este string cada vez que se suban cambios a producción.
-// Formato: 'sf-YYYYMMDD-HHMM' — evita que los usuarios vean versión vieja cacheada.
-const CACHE_VER  = 'sf-20260327-0004';
+const CACHE_VER  = 'sf-20260929-0002';   // subilo igual en cada deploy (limpia cachés viejas)
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
-// Assets que se intentan precargar al instalar el SW.
-// FIX: si uno falla, los demás siguen (ver INSTALL más abajo).
 const PRECACHE = [
     '/',
     '/index.html',
@@ -20,6 +23,7 @@ const PRECACHE = [
     '/style.css',
     '/nav.js',
     '/Informes/Informes-index.html',
+    '/Informes/Informes-style.css',
     '/Informes/inf-config.js',
     '/Informes/inf-api.js',
     '/Informes/inf-ui.js',
@@ -36,90 +40,94 @@ const PRECACHE = [
     '/assets/logo2.jpeg',
 ];
 
-// ── INSTALL: FIX — usar allSettled en lugar de addAll ────────────
-// El addAll() original era todo-o-nada: si un asset falla (404, red, etc.),
-// el Service Worker NO se instala y la PWA queda sin offline.
-// Con allSettled + add individual, los assets que existen se cachean
-// y los que fallan solo loguean un warning.
+// ── INSTALL: precache SIN usar la caché HTTP (cache: 'reload') ────
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache =>
             Promise.allSettled(
                 PRECACHE.map(url =>
-                    cache.add(url).catch(err => {
-                        console.warn('[SW] No se pudo cachear:', url, err.message);
-                    })
+                    fetch(new Request(url, { cache: 'reload' }))
+                        .then(res => { if (res.ok) return cache.put(url, res); })
+                        .catch(err => console.warn('[SW] No se pudo cachear:', url, err.message))
                 )
             )
         ).then(() => self.skipWaiting())
     );
 });
 
-// ── ACTIVATE: limpiar caches viejas ──────────────────────────────
+// ── ACTIVATE: borrar cachés viejas ────────────────────────────────
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys()
             .then(keys => Promise.all(
-                keys
-                    .filter(k => k.startsWith('support-fitness-') && k !== CACHE_NAME)
-                    .map(k => {
-                        console.log('[SW] Eliminando cache vieja:', k);
-                        return caches.delete(k);
-                    })
+                keys.filter(k => k.startsWith('support-fitness-') && k !== CACHE_NAME)
+                    .map(k => caches.delete(k))
             ))
             .then(() => self.clients.claim())
+            // Si hay pestañas de Informes abiertas con archivos viejos, recargarlas UNA vez.
+            // (No tocamos el formulario de los técnicos para no perder lo que estén cargando.)
+            .then(() => self.clients.matchAll({ type: 'window' }))
+            .then(clientes => clientes.forEach(c => {
+                if (c.url.includes('/Informes/')) { try { c.navigate(c.url); } catch (e) {} }
+            }))
     );
 });
 
-// ── MESSAGE: FIX — permite forzar actualización desde la app ─────
-// La app puede enviar postMessage({ type: 'skipWaiting' }) cuando
-// detecta que hay un SW esperando, para que tome control sin recargar.
 self.addEventListener('message', event => {
-    if (event.data && event.data.type === 'skipWaiting') {
-        self.skipWaiting();
-    }
+    if (event.data && event.data.type === 'skipWaiting') self.skipWaiting();
 });
 
-// ── FETCH: estrategia por tipo de recurso ────────────────────────
-self.addEventListener('fetch', event => {
-    // Ignorar esquemas no-http (chrome-extension://, etc.) — causarían TypeError en cache.put()
-    if (!event.request.url.startsWith('http')) return;
-    const url = new URL(event.request.url);
+// ── Helpers ───────────────────────────────────────────────────────
+function guardar(request, response) {
+    if (!response || response.status !== 200 || response.type === 'opaque') return;
+    const copia = response.clone();
+    caches.open(CACHE_NAME).then(c => c.put(request, copia)).catch(() => {});
+}
 
-    // 1. Llamadas a Google Apps Script → Network-Only (siempre datos frescos)
-    if (url.hostname.includes('script.google.com')) {
-        event.respondWith(fetch(event.request));
-        return;
-    }
-
-    // 2. APIs externas (dólar) → Network-First, fallback a cache
-    if (url.hostname.includes('dolarapi') ||
-        url.hostname.includes('argentinadatos') ||
-        url.hostname.includes('bluelytics') ||
-        url.hostname.includes('criptoya') ||
-        url.hostname.includes('dolarito')) {
-        event.respondWith(
-            fetch(event.request).catch(() => caches.match(event.request))
+// Network-First: pide a la red revalidando (304 si no cambió); si no hay red, usa caché
+function redPrimero(request) {
+    return fetch(request, { cache: 'no-cache' })
+        .then(res => { guardar(request, res); return res; })
+        .catch(() =>
+            caches.match(request, { ignoreSearch: true }).then(c =>
+                c || (request.destination === 'document' ? caches.match('/') : Response.error())
+            )
         );
+}
+
+// Cache-First: solo para imágenes/fuentes, que no cambian
+function cachePrimero(request) {
+    return caches.match(request).then(cached => {
+        if (cached) return cached;
+        return fetch(request).then(res => { guardar(request, res); return res; });
+    });
+}
+
+// ── FETCH ─────────────────────────────────────────────────────────
+self.addEventListener('fetch', event => {
+    const req = event.request;
+    if (req.method !== 'GET') return;                 // POST al Apps Script, etc.: ni tocarlo
+    if (!req.url.startsWith('http')) return;
+    const url = new URL(req.url);
+
+    // 1. Apps Script y demás externos → directo a la red
+    if (url.hostname.includes('script.google.com') ||
+        url.hostname.includes('script.googleusercontent.com')) return;
+
+    // 2. APIs del dólar → red primero, caché de respaldo
+    if (/dolarapi|argentinadatos|bluelytics|criptoya|dolarito/.test(url.hostname)) {
+        event.respondWith(fetch(req).catch(() => caches.match(req)));
         return;
     }
 
-    // 3. Assets estáticos → Cache-First (instantáneo en visitas repetidas)
-    event.respondWith(
-        caches.match(event.request).then(cached => {
-            if (cached) return cached;
-            return fetch(event.request).then(response => {
-                if (!response || response.status !== 200 || response.type === 'opaque') {
-                    return response;
-                }
-                const toCache = response.clone();
-                caches.open(CACHE_NAME).then(cache => cache.put(event.request, toCache));
-                return response;
-            }).catch(() => {
-                if (event.request.destination === 'document') {
-                    return caches.match('/');
-                }
-            });
-        })
-    );
+    // 3. Solo gestionamos nuestro propio origen
+    if (url.origin !== self.location.origin) return;
+
+    // 4. Código (HTML/JS/CSS) → SIEMPRE lo último
+    const esCodigo = req.destination === 'document' || req.destination === 'script' ||
+                     req.destination === 'style' || /\.(html|js|css)$/i.test(url.pathname);
+    if (esCodigo) { event.respondWith(redPrimero(req)); return; }
+
+    // 5. Imágenes, fuentes, etc. → instantáneo desde caché
+    event.respondWith(cachePrimero(req));
 });
