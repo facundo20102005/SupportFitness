@@ -1,4 +1,4 @@
-console.info('[inf-docs] build 2026-09-28 · Ver PDF / Facturado-Anulado');
+console.info('[inf-docs] build 2026-09-30 · Notas de crédito / Ver PDF doble');
 // ── inf-docs.js — Documentos, ítems, PDF y correo ─────────────
 
 async function guardarDocumento() {
@@ -360,9 +360,11 @@ function _estadoOperativo(doc) {
 // ── Caché de PDFs (en memoria): la 2ª vez que se abre una factura es instantáneo ──
 const _pdfCache    = new Map();   // clave -> { res, url }   (url = blob: ya decodificado)
 const _pdfPromesas = new Map();   // clave -> Promise en vuelo (evita pedir dos veces lo mismo)
-const _PDF_CACHE_MAX = 12;
+const _PDF_CACHE_MAX = 16;
 
-function _pdfClave(doc, fileId) { return String(doc.numFactura || '').trim() + '|' + (fileId || ''); }
+// "ANULADA B-4240" -> "B-4240"  (el backend marca así las facturas anuladas por nota de crédito)
+function _numFacturaLimpio(n) { return String(n || '').trim().replace(/^ANULADA\s+/i, ''); }
+function _esAnulado(doc) { return _estadoOperativo(doc) === 'anulado'; }
 
 function _base64ABlobUrl(b64, mime) {
     const bin = atob(b64);
@@ -371,16 +373,17 @@ function _base64ABlobUrl(b64, mime) {
     return URL.createObjectURL(new Blob([arr], { type: mime || 'application/pdf' }));
 }
 
-function _cargarPDFFactura(doc, fileId) {
-    const clave = _pdfClave(doc, fileId);
+// Carga (con caché) el PDF de un comprobante por su número: "B-4240" o "NC B-0203"
+function _cargarPDFPorNumero(num, cuit, fileId) {
+    const clave = String(num).trim() + '|' + (fileId || '');
     if (_pdfCache.has(clave))    return Promise.resolve(_pdfCache.get(clave));
     if (_pdfPromesas.has(clave)) return _pdfPromesas.get(clave);
 
     const p = llamarAPI({
         accion: 'obtenerFacturaPDFDrive',
-        payload: { numFactura: String(doc.numFactura || '').trim(), cuit: doc.cuit || '', fileId: fileId || '' }
+        payload: { numFactura: String(num).trim(), cuit: cuit || '', fileId: fileId || '' }
     }, 60000).then(res => {
-        if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo obtener la factura.');
+        if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo obtener el comprobante.');
         const entry = { res, url: _base64ABlobUrl(res.seleccionado.base64, res.seleccionado.mime) };
         res.seleccionado.base64 = null;                       // liberar memoria: ya tenemos el blob
         _pdfCache.set(clave, entry);
@@ -397,28 +400,37 @@ function _cargarPDFFactura(doc, fileId) {
     return p;
 }
 
-// Se llama al expandir la tarjeta / pasar el mouse por "Ver PDF": empieza a bajar el PDF antes del clic
+function _cargarPDFFactura(doc, fileId) {
+    return _cargarPDFPorNumero(_numFacturaLimpio(doc.numFactura), doc.cuit, fileId);
+}
+// Devuelve null si el documento no tiene nota de crédito asociada
+function _cargarPDFNotaCredito(doc) {
+    const nc = String(doc.numNC || '').trim();
+    return nc ? _cargarPDFPorNumero(nc, doc.cuit, '') : null;
+}
+
+// Se llama al expandir la tarjeta / pasar el mouse por "Ver PDF": empieza a bajar los PDFs antes del clic
 function precargarPDFFactura(id) {
     try {
         const doc = documentosGuardados.find(d => String(d.id) === String(id));
         if (!doc || !/\d{4}/.test(String(doc.numFactura || ''))) return;
         _cargarPDFFactura(doc).catch(() => {});                // silencioso: el error real se muestra al hacer clic
+        const pn = _cargarPDFNotaCredito(doc);
+        if (pn) pn.catch(() => {});
     } catch (e) {}
 }
 
+// ════════════════════════════════════════════════════════════════
+//  📄 VER PDF — factura (y su nota de crédito si fue anulada) desde Drive "Facturas Support"
+// ════════════════════════════════════════════════════════════════
 async function verPDFFactura(id, btnEl, fileId) {
     const doc = documentosGuardados.find(d => String(d.id) === String(id));
     if (!doc) { mostrarMensaje('❌ Documento no encontrado.', 'error'); return; }
 
-    const num = String(doc.numFactura || '').trim();
-    if (!/\d{4}/.test(num)) {
+    if (!/\d{4}/.test(_numFacturaLimpio(doc.numFactura))) {
         mostrarMensaje('⚠️ Este documento no tiene número de factura cargado.', 'error');
         return;
     }
-
-    // ⚡ Ya descargado (por precarga o por una vista anterior): se abre al instante
-    const enCache = _pdfCache.get(_pdfClave(doc, fileId));
-    if (enCache) { _mostrarVisorFactura(doc, enCache.res, enCache.url); return; }
 
     const textoOriginal = btnEl ? btnEl.innerHTML : '';
     let reloj = null;
@@ -431,8 +443,15 @@ async function verPDFFactura(id, btnEl, fileId) {
     }
 
     try {
-        const entry = await _cargarPDFFactura(doc, fileId);
-        _mostrarVisorFactura(doc, entry.res, entry.url);
+        // Factura y nota de crédito se piden EN PARALELO (y desde caché si ya estaban)
+        const pF = _cargarPDFFactura(doc, fileId);
+        const pN = _cargarPDFNotaCredito(doc);
+        const envolver = p => p.then(v => ({ ok: true, v }), e => ({ ok: false, e }));
+        const [rF, rN] = await Promise.all([envolver(pF), pN ? envolver(pN) : Promise.resolve(null)]);
+
+        if (!rF.ok && !(rN && rN.ok)) throw rF.e;             // no hay nada para mostrar
+        _mostrarVisorFactura(doc, rF.ok ? rF.v : null, rN && rN.ok ? rN.v : null,
+            { errFactura: rF.ok ? '' : rF.e.message, errNC: (rN && !rN.ok) ? rN.e.message : '' });
     } catch (e) {
         mostrarMensaje('❌ ' + e.message, 'error');
     } finally {
@@ -441,19 +460,46 @@ async function verPDFFactura(id, btnEl, fileId) {
     }
 }
 
-function _mostrarVisorFactura(doc, res, url) {
-    document.getElementById('_visor-factura')?.remove();
-    const sel = res.seleccionado;
+function _visorSeleccionar(i) {
+    const items = window._visorItems || [];
+    const it = items[i];
+    if (!it) return;
+    const sel = it.entry.res.seleccionado;
+    const $ = id => document.getElementById(id);
+    if ($('_visor-iframe'))  $('_visor-iframe').src = it.entry.url + '#toolbar=1&navpanes=0&view=FitH';
+    if ($('_visor-nombre'))  $('_visor-nombre').textContent = sel.name;
+    if ($('_visor-drive'))   $('_visor-drive').href = sel.driveUrl;
+    window._visorUrlActual = it.entry.url;
+    document.querySelectorAll('#_visor-factura .visor-tab').forEach((b, k) => b.classList.toggle('activo', k === i));
+}
 
-    const otros = (res.archivos || []).length > 1
+function _mostrarVisorFactura(doc, entryF, entryN, avisos) {
+    document.getElementById('_visor-factura')?.remove();
+    avisos = avisos || {};
+
+    const items = [];
+    if (entryF) items.push({ tab: '📄 Factura ' + _numFacturaLimpio(doc.numFactura), entry: entryF });
+    if (entryN) items.push({ tab: '🔄 Nota de Crédito ' + String(doc.numNC || '').replace(/^NC\s*/i, ''), entry: entryN });
+    window._visorItems = items;
+
+    const selF = entryF ? entryF.res.seleccionado : null;
+    const otros = (entryF && (entryF.res.archivos || []).length > 1)
         ? `<div style="display:flex; gap:6px; flex-wrap:wrap; padding:8px 14px; background:#111827;">
-              <span style="font-size:12px; color:#fbbf24; font-weight:700; align-self:center;">Hay ${res.archivos.length} archivos parecidos:</span>
-              ${res.archivos.map(a => `
+              <span style="font-size:12px; color:#fbbf24; font-weight:700; align-self:center;">Hay ${entryF.res.archivos.length} archivos parecidos:</span>
+              ${entryF.res.archivos.map(a => `
                   <button onclick="verPDFFactura(${doc.id}, null, '${a.id}')"
                           style="padding:5px 10px; border-radius:8px; font-size:11px; font-weight:700; cursor:pointer;
-                                 border:1.5px solid #60a5fa; color:${a.id===sel.id?'white':'#60a5fa'};
-                                 background:${a.id===sel.id?'#1a73e8':'transparent'};">${a.name}</button>`).join('')}
+                                 border:1.5px solid #60a5fa; color:${a.id===selF.id?'white':'#60a5fa'};
+                                 background:${a.id===selF.id?'#1a73e8':'transparent'};">${a.name}</button>`).join('')}
            </div>` : '';
+
+    const tabs = items.length > 1
+        ? `<div class="visor-tabs">${items.map((it, i) =>
+              `<button class="visor-tab ${i === 0 ? 'activo' : ''}" onclick="_visorSeleccionar(${i})">${it.tab}</button>`).join('')}</div>` : '';
+
+    const aviso = (avisos.errNC || avisos.errFactura)
+        ? `<div style="padding:7px 14px; background:#3d2500; color:#fdba74; font-size:12px; font-weight:700;">
+              ⚠️ ${avisos.errFactura ? 'Factura: ' + avisos.errFactura : 'Nota de crédito: ' + avisos.errNC}</div>` : '';
 
     const ov = document.createElement('div');
     ov.id = '_visor-factura';
@@ -462,18 +508,21 @@ function _mostrarVisorFactura(doc, res, url) {
         <div style="background:#0f172a; border-radius:14px; width:100%; max-width:900px; height:94vh; display:flex; flex-direction:column; overflow:hidden; border:1px solid rgba(255,255,255,0.1);">
             <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:#1e293b;">
                 <div style="flex:1; min-width:0;">
-                    <div style="font-weight:800; font-size:14px; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${sel.name}</div>
+                    <div id="_visor-nombre" style="font-weight:800; font-size:14px; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
                     <div style="font-size:11px; color:#94a3b8;">${doc.cliente} · ${doc.numFactura}</div>
                 </div>
-                <button onclick="window.open('${url}','_blank')" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:transparent; color:#e2e8f0; font-weight:700; font-size:12px; cursor:pointer;">↗ Abrir</button>
-                <a href="${sel.driveUrl}" target="_blank" rel="noopener" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; font-weight:700; font-size:12px; text-decoration:none;">Drive</a>
+                <button onclick="window.open(window._visorUrlActual,'_blank')" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:transparent; color:#e2e8f0; font-weight:700; font-size:12px; cursor:pointer;">↗ Abrir</button>
+                <a id="_visor-drive" href="#" target="_blank" rel="noopener" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; font-weight:700; font-size:12px; text-decoration:none;">Drive</a>
                 <button onclick="document.getElementById('_visor-factura').remove()" style="padding:8px 12px; border-radius:8px; border:none; background:#d93025; color:white; font-weight:900; font-size:12px; cursor:pointer;">✕ Cerrar</button>
             </div>
+            ${tabs}
+            ${aviso}
             ${otros}
-            <iframe src="${url}#toolbar=1&navpanes=0&view=FitH" style="flex:1; width:100%; border:0; background:#525659;"></iframe>
+            <iframe id="_visor-iframe" style="flex:1; width:100%; border:0; background:#525659;"></iframe>
         </div>`;
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
+    _visorSeleccionar(0);
 }
 
 function renderizarTarjetas() {
@@ -527,9 +576,12 @@ function renderizarTarjetas() {
     // 5. Aplicar filtros (pago + mes + TIPO)
     let finales = filtrados.filter(d => {
         const pagadoNorm = String(d.pagado || '').trim();
-        const matchPago = (filtroPagoActual === 'Todos'
-            || pagadoNorm === filtroPagoActual
-            || pagadoNorm.toLowerCase() === filtroPagoActual.toLowerCase());
+        // Una factura anulada (nota de crédito) no es ni "pendiente" ni "pagada": solo se ve en "Todos"
+        const matchPago = _esAnulado(d)
+            ? (filtroPagoActual === 'Todos')
+            : (filtroPagoActual === 'Todos'
+               || pagadoNorm === filtroPagoActual
+               || pagadoNorm.toLowerCase() === filtroPagoActual.toLowerCase());
         const matchMes  = (filtroMesActual  === 'Todos' || d.mesAnio === filtroMesActual);
         const matchTipo = filtroTipoActual === 'todos' ? true
             : filtroTipoActual === 'sin_cuit' ? (d._tipo === 'reparacion' && !String(d.cuit || '').replace(/\D/g,'').length)
@@ -639,8 +691,11 @@ function renderizarTarjetas() {
         
         const badgeCuit  = doc.cuit ? `<span style="background:#f1f3f4; color:#5f6368; padding:2px 8px; border-radius:8px; font-size:11px; font-weight:700; border:1px solid #e0e0e0; margin-right:4px;">${doc.cuit}</span>` : '';
         let factStr      = String(doc.numFactura || '');
-        let displayFact  = factStr.startsWith("NC ") ? `🔄 NC ${factStr.replace("NC ","")}` : factStr.includes("-") ? `📄 Factura ${factStr}` : factStr ? `📄 ${factStr}` : '';
-        const badgeFact  = displayFact ? `<span class="badge-fact">${displayFact}</span>` : '';
+        const anulado    = estadoNorm === 'anulado';
+        const factLimpia = _numFacturaLimpio(factStr);
+        let displayFact  = factStr.startsWith("NC ") ? `🔄 NC ${factStr.replace("NC ","")}` : factLimpia.includes("-") ? `${anulado ? '🚫' : '📄'} Factura ${factLimpia}` : factLimpia ? `📄 ${factLimpia}` : '';
+        const badgeFact  = displayFact ? `<span class="badge-fact ${anulado ? 'badge-anulada' : ''}">${displayFact}</span>` : '';
+        const badgeNC    = doc.numNC ? `<span class="badge-fact badge-nc" title="Nota de crédito que anuló esta factura">🔄 ${doc.numNC}</span>` : '';
         const bdgTipo    = badgeTipoDoc(doc._tipo, doc);
 
         let maquinasHTML = '';
@@ -709,7 +764,7 @@ function renderizarTarjetas() {
         const flechaIcono = estabaAbierta ? '▲' : '▼';
 
         const div = document.createElement('div');
-        div.className = `doc-card-v3 ${esPagado?'pagado':'pendiente'}`;
+        div.className = `doc-card-v3 ${anulado ? 'anulada' : (esPagado?'pagado':'pendiente')}`;
         div.setAttribute('data-id', doc.id); // 🔥 VITAL para recordar si estaba abierta
         div.style.animationDelay = (animIdx * 0.035) + 's';
 
@@ -724,19 +779,19 @@ function renderizarTarjetas() {
                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px;">
                         <span class="doc-gym-v3">${doc.cliente}</span>
                         ${badgeCuit}
-                        ${badgeFact}
+                        ${badgeFact}${badgeNC}
                     </div>
                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:3px;">
                         ${bdgTipo}
                         <span class="doc-meta-v3">
                             ${doc.fechaLimpia}
                             &nbsp;·&nbsp;
-                            Total: <strong style="color:#1a73e8;">$${Number(doc.total).toLocaleString('es-AR')}</strong>
+                            Total: <strong style="color:#1a73e8;${anulado ? 'text-decoration:line-through; opacity:.55;' : ''}">$${Number(doc.total).toLocaleString('es-AR')}</strong>
                         </span>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-                    ${modoApp==='presupuestos' ? `<span class="badge-estado ${esPagado?'pagado':'pendiente'}">${doc.pagado}</span>` : ''}
+                    ${anulado ? `<span class="badge-estado anulado">ANULADA</span>` : (modoApp==='presupuestos' ? `<span class="badge-estado ${esPagado?'pagado':'pendiente'}">${doc.pagado}</span>` : '')}
                     <span class="arrow" style="font-size:13px; color:#1a73e8; font-weight:800;">${flechaIcono}</span>
                 </div>
             </div>
@@ -1697,8 +1752,10 @@ function _lpdfActualizarPreview() {
     const docs = _lpdfFiltrarDocs();
     const el   = document.getElementById('_lpdf-preview');
     if (el) {
-        const total = docs.reduce(function(s, d) { return s + Number(d.total || 0); }, 0);
-        el.innerHTML = `<strong>${docs.length} facturas</strong> encontradas (${docs.filter(d => String(d.pagado||'').trim().toLowerCase()==='pagado').length} pagadas) · Total: <strong style="color:#60a5fa;">$${Math.round(total).toLocaleString('es-AR')}</strong>`;
+        const vigentes = docs.filter(function(d) { return !_esAnulado(d); });
+        const nAnul = docs.length - vigentes.length;
+        const total = vigentes.reduce(function(s, d) { return s + Number(d.total || 0); }, 0);
+        el.innerHTML = `<strong>${vigentes.length} facturas</strong>${nAnul ? ` (+${nAnul} anulada${nAnul>1?'s':''}, no suman)` : ''} encontradas (${vigentes.filter(d => String(d.pagado||'').trim().toLowerCase()==='pagado').length} pagadas) · Total: <strong style="color:#60a5fa;">$${Math.round(total).toLocaleString('es-AR')}</strong>`;
     }
 }
 
@@ -1739,6 +1796,7 @@ async function _generarListaPDFEjecutar() {
         let registradosVistos = new Set();
 
         docs.forEach(doc => {
+            if (_esAnulado(doc)) return;   // una factura anulada no representa al cliente
             const nombreDoc = String(doc.cliente || "").trim();
             const nombreUpper = nombreDoc.toUpperCase();
             const cuitDoc = String(doc.cuit || "").replace(/\D/g, "");
@@ -1806,14 +1864,20 @@ async function _generarListaPDFEjecutar() {
             </thead>
             <tbody>
                 ${docs.map((doc, i) => {
-                    const bgRow = i % 2 === 0 ? '#ffffff' : '#f8f9fc';
-                    const factNum = String(doc.numFactura || '—');
+                    const anul  = _esAnulado(doc);
+                    const bgRow = anul ? '#f3f4f6' : (i % 2 === 0 ? '#ffffff' : '#f8f9fc');
+                    const factNum = _numFacturaLimpio(doc.numFactura) || '—';
+                    const tachado = anul ? 'text-decoration:line-through; color:#9ca3af;' : '';
                     const tipoBadge = doc._tipo === 'abono' ? '#1d4ed8' : doc._tipo === 'reparacion' ? '#15803d' : doc._tipo === 'presup_enviado' ? '#6b21a8' : '#92400e';
                     const tipoLabel = doc._tipo === 'abono' ? 'Abono' : doc._tipo === 'reparacion' ? 'Rep.' : doc._tipo === 'presup_enviado' ? 'Env.' : '?';
 
                     const pagadoDoc = String(doc.pagado || '').trim().toLowerCase() === 'pagado';
                     const szBox = fuenteGrande ? '20px' : '15px';
-                    const checkBoxesHtml = columnasSeleccionadas.map(col => {
+                    const checkBoxesHtml = anul
+                      ? (columnasSeleccionadas.length
+                          ? `<td colspan="${columnasSeleccionadas.length}" style="text-align:center; border-bottom:1px solid #e5e7eb; padding:${paddingTd}; font-size:${szMeta}; font-weight:900; color:#b91c1c; letter-spacing:.5px;">ANULADA${doc.numNC ? '<br><span style="font-weight:700; color:#6b7280;">' + doc.numNC + '</span>' : ''}</td>`
+                          : '')
+                      : columnasSeleccionadas.map(col => {
                         if (pagadoDoc && col === 'Pagado') {
                             return `<td style="text-align:center; border-bottom:1px solid #e5e7eb; padding:${paddingTd};">
                                 <div style="width:${szBox}; height:${szBox}; border:1.5px solid #111; border-radius:4px; margin:0 auto; background:#fff; color:#111; font-weight:900; font-size:${fuenteGrande?'16px':'12px'}; line-height:${szBox}; text-align:center;">✓</div>
@@ -1837,8 +1901,8 @@ async function _generarListaPDFEjecutar() {
                         <td style="padding:${paddingTd}; border-bottom:1px solid #e5e7eb;">
                             <span style="display:inline-block; background:${tipoBadge}1a; color:${tipoBadge}; border-radius:4px; padding:1px 5px; font-size:${szMeta}; font-weight:700;">${tipoLabel}</span>
                         </td>
-                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:700; color:#1e3a8a; border-bottom:1px solid #e5e7eb;">${factNum}</td>
-                        <td style="padding:${paddingTd}; font-size:${fuenteGrande?'16px':'12px'}; font-weight:900; color:#1d4ed8; text-align:right; border-bottom:1px solid #e5e7eb;">
+                        <td style="padding:${paddingTd}; font-size:${szBody}; font-weight:700; color:#1e3a8a; border-bottom:1px solid #e5e7eb; ${tachado}">${factNum}</td>
+                        <td style="padding:${paddingTd}; font-size:${fuenteGrande?'16px':'12px'}; font-weight:900; color:#1d4ed8; text-align:right; border-bottom:1px solid #e5e7eb; ${tachado}">
                             $${Number(doc.total || 0).toLocaleString('es-AR')}
                         </td>
                         <td style="padding:${paddingTd}; font-size:${szBody}; color:#374151; text-align:center; border-bottom:1px solid #e5e7eb;">${doc.fechaLimpia || ''}</td>
@@ -1849,7 +1913,9 @@ async function _generarListaPDFEjecutar() {
         </table>`;
     }
 
-    const totalGeneral = docs.reduce((s, d) => s + Number(d.total || 0), 0);
+    const docsVigentes = docs.filter(d => !_esAnulado(d));          // las anuladas se listan pero NO suman
+    const nAnuladasLista = docs.length - docsVigentes.length;
+    const totalGeneral = docsVigentes.reduce((s, d) => s + Number(d.total || 0), 0);
     const tituloRango  = desde && hasta ? `${desde.split('-').reverse().join('/')} al ${hasta.split('-').reverse().join('/')}` : 'Todos los registros';
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -1879,7 +1945,7 @@ async function _generarListaPDFEjecutar() {
     ${tablaHTML}
 
     <div style="text-align:right; margin-top:0px; padding:10px; background:#eff6ff; border-bottom:2px solid #1e40af; font-size:${szBody}; font-weight:900; color:#1e3a8a;">
-        TOTAL EN RANGO: $${Math.round(totalGeneral).toLocaleString('es-AR')} (${docs.length} Documentos)
+        TOTAL EN RANGO: $${Math.round(totalGeneral).toLocaleString('es-AR')} (${docsVigentes.length} Documentos${nAnuladasLista ? ' · ' + nAnuladasLista + ' anulada' + (nAnuladasLista>1?'s':'') + ' no incluida' + (nAnuladasLista>1?'s':'') : ''})
     </div>
 
     ${formatoReporte==='control' && colPagado ? `<div style="font-size:${szMeta}; color:#6b7280; margin-top:8px;">✓ = pagado &nbsp;·&nbsp; celda negra = no corresponde (documento ya pagado)</div>` : ''}

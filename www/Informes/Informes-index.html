@@ -22,12 +22,12 @@
         Versión actual: v7 (19/05/2025)
     -->
     <!-- ORDEN ESTRICTO DE CARGA -->
-    <script src="inf-config.js?v=15" defer></script>
-    <script src="inf-api.js?v=15" defer></script>
-    <script src="inf-abonos.js?v=15" defer></script>
-    <script src="inf-docs.js?v=15" defer></script>
-    <script src="inf-reparaciones.js?v=15" defer></script>
-    <script src="inf-ui.js?v=15" defer></script>
+    <script src="inf-config.js?v=17" defer></script>
+    <script src="inf-api.js?v=17" defer></script>
+    <script src="inf-abonos.js?v=17" defer></script>
+    <script src="inf-docs.js?v=17" defer></script>
+    <script src="inf-reparaciones.js?v=17" defer></script>
+    <script src="inf-ui.js?v=17" defer></script>
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -147,10 +147,7 @@
             transition: all 0.2s;
             -webkit-tap-highlight-color: transparent;
         }
-        #tab-crear   { background: var(--inf-azul); color: white; box-shadow: 0 3px 12px rgba(26,115,232,0.35); }
-        #tab-creados { background: var(--inf-card); color: var(--inf-sub); border: 1.5px solid var(--inf-border); }
-        #tab-crear.activo   { box-shadow: 0 5px 18px rgba(26,115,232,0.5); }
-        #tab-creados.activo { background: #1d2939; color: white; border-color: transparent; box-shadow: 0 3px 12px rgba(0,0,0,0.3); }
+        /* estilos de .sub-tab / .activo: ver bloque «MEJORAS VISUALES v16» al final */
         .sub-tab:active { transform: scale(0.97); }
         @media (max-width: 380px) { .sub-tab { font-size: 12px; padding: 11px 6px; } }
 
@@ -821,6 +818,157 @@
         ._precio-lista-completa .precio-row {
             animation: priceFadeIn 0.15s ease both;
         }
+
+        /* ════════════════════════════════════════════════════════
+           MEJORAS VISUALES v16 — resaltado de estado + animaciones
+           (pensado para modo oscuro: movimientos suaves, sin destellos)
+        ════════════════════════════════════════════════════════ */
+
+        /* ─── SUB TABS: solo la pestaña activa se resalta ─── */
+        .sub-tab {
+            background: var(--inf-card);
+            color: var(--inf-sub);
+            border: 1.5px solid var(--inf-border);
+            box-shadow: none;
+            position: relative;
+            transition: background .25s, color .25s, box-shadow .3s, transform .2s, border-color .25s;
+        }
+        .sub-tab:hover:not(.activo) { color: var(--inf-text); border-color: rgba(96,165,250,.45); transform: translateY(-1px); }
+        .sub-tab.activo {
+            background: linear-gradient(135deg, #1a73e8, #1557b0);
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 6px 20px rgba(26,115,232,.45);
+            transform: translateY(-1px);
+            animation: tabPop .35s cubic-bezier(.34,1.56,.64,1);
+        }
+        .sub-tab.activo::after {                       /* barrita inferior animada */
+            content: ''; position: absolute; left: 22%; right: 22%; bottom: 4px; height: 3px;
+            border-radius: 3px; background: rgba(255,255,255,.85);
+            animation: barraIn .35s ease both;
+        }
+
+        /* ─── FILTROS Pendientes / Pagados / Todos ─── */
+        .btn-filtro-estado {
+            position: relative; overflow: hidden;
+            background: #f4f6f9; color: #5f6368;
+            border: 1.5px solid transparent;
+            transition: background .25s, color .25s, border-color .25s, box-shadow .3s, transform .2s;
+        }
+        .btn-filtro-estado:hover:not(.activo) { transform: translateY(-1px); }
+        .btn-filtro-estado::after {                    /* barrita que "se dibuja" en el filtro activo */
+            content: ''; position: absolute; left: 20%; right: 20%; bottom: 3px; height: 3px;
+            border-radius: 3px; background: currentColor;
+            transform: scaleX(0); transition: transform .35s cubic-bezier(.34,1.56,.64,1);
+        }
+        .btn-filtro-estado.activo { font-weight: 900; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+        .btn-filtro-estado.activo::after { transform: scaleX(1); }
+        .btn-filtro-estado.pop { animation: filtroPop .38s cubic-bezier(.34,1.56,.64,1); }
+
+        #filtro-pendiente.activo { background: #fce8e6; color: #d93025; border-color: rgba(217,48,37,.35); }
+        #filtro-pagado.activo    { background: #e6f4ea; color: #0f9d58; border-color: rgba(15,157,88,.35); }
+        #filtro-todos.activo     { background: #e8f0fe; color: #1a73e8; border-color: rgba(26,115,232,.4); }
+
+        body.dark-mode .btn-filtro-estado { background: rgba(255,255,255,.05); color: #94a3b8; border-color: rgba(255,255,255,.08); }
+        body.dark-mode .btn-filtro-estado:hover:not(.activo) { background: rgba(255,255,255,.09); color: #e2e8f0; }
+        body.dark-mode #filtro-pendiente.activo { background: rgba(239,68,68,.18);  color: #fca5a5; border-color: #f87171; box-shadow: 0 0 0 1px rgba(248,113,113,.25), 0 4px 18px rgba(239,68,68,.28); }
+        body.dark-mode #filtro-pagado.activo    { background: rgba(74,222,128,.16); color: #86efac; border-color: #4ade80; box-shadow: 0 0 0 1px rgba(74,222,128,.25),  0 4px 18px rgba(74,222,128,.25); }
+        body.dark-mode #filtro-todos.activo     { background: rgba(59,130,246,.20); color: #93c5fd; border-color: #60a5fa; box-shadow: 0 0 0 1px rgba(96,165,250,.30),  0 4px 18px rgba(59,130,246,.32); }
+
+        /* ─── CHIPS DE MES ─── */
+        .mes-chip { transition: background .25s, color .25s, border-color .25s, box-shadow .3s, transform .2s; }
+        .mes-chip:hover:not(.activo) { transform: translateY(-1px); border-color: rgba(96,165,250,.5); color: var(--inf-text); }
+        .mes-chip.activo { animation: chipPop .3s cubic-bezier(.34,1.56,.64,1); }
+        body.dark-mode .mes-chip.activo { box-shadow: 0 0 0 1px rgba(96,165,250,.35), 0 4px 16px rgba(26,115,232,.4); }
+
+        /* ─── BARRA DE DESPLAZAMIENTO DE FECHAS ─── */
+        .meses-wrap { position: relative; margin-bottom: 12px; }
+        .meses-wrap .meses-scroll { margin-bottom: 0; }
+        .meses-scroll {
+            position: relative;
+            padding: 2px 2px 12px;
+            scrollbar-width: thin;                                   /* Firefox */
+            scrollbar-color: #3b82f6 rgba(148,163,184,.18);
+            cursor: grab;
+            scroll-behavior: auto;
+        }
+        .meses-scroll.arrastrando { cursor: grabbing; user-select: none; }
+        .meses-scroll::-webkit-scrollbar { display: block; height: 8px; }
+        .meses-scroll::-webkit-scrollbar-track { background: rgba(148,163,184,.18); border-radius: 8px; }
+        .meses-scroll::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #3b82f6, #6366f1); border-radius: 8px; }
+        .meses-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #60a5fa, #818cf8); }
+        body.dark-mode .meses-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,.07); }
+
+        .meses-flecha {
+            position: absolute; top: -1px; z-index: 3; width: 30px; height: 30px; border-radius: 50%;
+            border: 1px solid var(--inf-border); background: var(--inf-card); color: var(--inf-azul);
+            font-size: 20px; line-height: 1; font-weight: 900; cursor: pointer;
+            box-shadow: var(--inf-shadow-md); display: flex; align-items: center; justify-content: center;
+            transition: opacity .25s, transform .2s, background .2s;
+        }
+        .meses-flecha:hover { transform: scale(1.1); background: var(--inf-azul); color: #fff; }
+        .meses-flecha.izq { left: -6px; }
+        .meses-flecha.der { right: -6px; }
+        .meses-wrap.scroll-ini .meses-flecha.izq,
+        .meses-wrap.scroll-fin .meses-flecha.der { opacity: 0; pointer-events: none; }
+        .meses-wrap.sin-overflow .meses-flecha { display: none; }
+        @media (hover: none) { .meses-flecha { display: none; } }       /* en celular se desliza con el dedo */
+
+        /* ─── TARJETAS ─── */
+        .doc-card-v3 { transition: transform .25s, box-shadow .3s, border-color .3s, background .3s; }
+        body.dark-mode .doc-card-v3:hover {
+            transform: translateY(-2px);
+            border-color: rgba(96,165,250,.38);
+            box-shadow: 0 8px 28px rgba(0,0,0,.55), 0 0 0 1px rgba(96,165,250,.14);
+        }
+        .doc-card-v3.pendiente { transition: transform .25s, box-shadow .3s, border-color .3s; }
+        .doc-header-v3 .arrow { display: inline-block; transition: transform .25s; }
+        .doc-header-v3:hover .arrow { transform: scale(1.25); }
+        .doc-expand-v3.abierto { animation: expandIn .35s ease both; }
+        body.dark-mode .badge-estado.pendiente { animation: pulsoSuave 2.8s ease-in-out infinite; }
+
+        /* ─── Secciones al cambiar de pestaña ─── */
+        #seccion-creados, #seccion-crear, #_rep-root { animation: seccionIn .32s ease both; }
+
+        /* ─── Spinner mini del botón "Ver PDF" ─── */
+        .spinner-mini {
+            display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+            animation: spin .7s linear infinite; vertical-align: -2px;
+        }
+
+        @keyframes tabPop     { from { transform: scale(.94); } to { transform: scale(1) translateY(-1px); } }
+        @keyframes barraIn    { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+        @keyframes filtroPop  { 0% { transform: scale(.92); } 60% { transform: scale(1.04); } 100% { transform: scale(1); } }
+        @keyframes chipPop    { 0% { transform: scale(.9); } 100% { transform: scale(1); } }
+        @keyframes seccionIn  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes expandIn   { from { opacity: .4; } to { opacity: 1; } }
+        @keyframes pulsoSuave { 0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); } 50% { box-shadow: 0 0 0 4px rgba(248,113,113,.16); } }
+        @keyframes spin       { to { transform: rotate(360deg); } }
+
+        @media (prefers-reduced-motion: reduce) {
+            .sub-tab, .sub-tab.activo, .btn-filtro-estado, .mes-chip, .doc-card-v3, .doc-expand-v3,
+            .badge-estado, #seccion-creados, #seccion-crear, #_rep-root, .sub-tab.activo::after {
+                animation: none !important; transition: none !important;
+            }
+        }
+
+        /* ─── FACTURAS ANULADAS (nota de crédito) ─── */
+        .doc-card-v3.anulada { border-left: 4px solid #6b7280; opacity: .72; background-image: repeating-linear-gradient(135deg, transparent 0 10px, rgba(148,163,184,.05) 10px 20px); }
+        .doc-card-v3.anulada:hover { opacity: 1; }
+        .doc-card-v3.anulada .doc-gym-v3 { text-decoration: line-through; text-decoration-color: rgba(148,163,184,.6); }
+        .badge-estado.anulado { background: rgba(107,114,128,.22); color: #cbd5e1; border: 1px solid rgba(148,163,184,.4); letter-spacing: .5px; animation: none !important; }
+        .badge-fact.badge-anulada { background: rgba(107,114,128,.2); color: #cbd5e1; text-decoration: line-through; }
+        .badge-fact.badge-nc { background: rgba(251,146,60,.16); color: #fdba74; border: 1px solid rgba(251,146,60,.35); }
+        body:not(.dark-mode) .badge-estado.anulado { background: #eceff1; color: #455a64; }
+        body:not(.dark-mode) .badge-fact.badge-nc { background: #fff3e0; color: #e65100; }
+
+        /* ─── VISOR: pestañas Factura / Nota de Crédito ─── */
+        .visor-tabs { display: flex; gap: 6px; padding: 8px 14px 0; background: #111827; }
+        .visor-tab { flex: 1; padding: 10px 8px; border: none; border-radius: 10px 10px 0 0; background: rgba(255,255,255,.05);
+                     color: #94a3b8; font-weight: 800; font-size: 13px; cursor: pointer; transition: background .2s, color .2s; }
+        .visor-tab:hover { color: #e2e8f0; background: rgba(255,255,255,.09); }
+        .visor-tab.activo { background: #1a73e8; color: #fff; }
     </style>
 </head>
 <body>
@@ -873,7 +1021,7 @@
 
             <!-- Sub-tabs -->
             <div class="sub-tabs">
-                <button id="tab-crear"   class="sub-tab" onclick="switchTab('crear')">✏️ Crear Nuevo</button>
+                <button id="tab-crear"   class="sub-tab activo" onclick="switchTab('crear')">✏️ Crear Nuevo</button>
                 <button id="tab-creados" class="sub-tab" onclick="switchTab('creados')">📁 Ver Guardados</button>
             </div>
 
@@ -1040,7 +1188,11 @@
                         <button class="btn-filtro-estado" id="filtro-todos"     onclick="setFiltroPago('todos')">🌐 Todos</button>
                     </div>
 
-                    <div class="meses-scroll" id="meses-scroll"></div>
+                    <div class="meses-wrap sin-overflow scroll-ini">
+                        <button type="button" class="meses-flecha izq" onclick="scrollMeses(-1)" aria-label="Fechas anteriores">‹</button>
+                        <div class="meses-scroll" id="meses-scroll"></div>
+                        <button type="button" class="meses-flecha der" onclick="scrollMeses(1)" aria-label="Fechas siguientes">›</button>
+                    </div>
                     <div id="contenedor-informes-creados"></div>
                 </div>
             </div>
