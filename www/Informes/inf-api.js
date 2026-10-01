@@ -76,7 +76,7 @@
         'obtenerAbonosBD', 'obtenerDocumentosBD', 'obtenerRegistroHistorico',
         'obtenerReparacionesPendientes', 'obtenerHistorialAnual', 'obtenerCronogramaDesdeSheet',
         'obtenerDatosCalendarioWeb', 'obtenerTapizadosPendientes', 'obtenerPresupuestosArmados',
-        'obtenerStock', 'obtenerFacturaPDFDrive', 'verificarVersion',
+        'obtenerStock', 'obtenerFacturaPDFDrive', 'verificarVersion', 'obtenerRevisionNotasCredito',
     ]);
 
     const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -270,20 +270,25 @@
         if (selAnio) selAnio.value = yyyy;
         if (selMesA) selMesA.value = `${yyyy}-${mm}`;
 
-        const hoja = hojaActual();
-        const claveDocs = 'docs_' + hoja;
+        // Documentos: se precarga SIEMPRE la hoja de Presupuestos (la que más se usa) y se guarda POR HOJA.
+        // Antes se usaba la hoja del modo activo en ese instante (por defecto "Ofertas"); si el usuario cambiaba
+        // de pestaña mientras la respuesta viajaba, los datos de una hoja pisaban a los de la otra
+        // (por eso aparecían sólo los datos de Mayo en Presupuestos).
+        const HOJA_PRINCIPAL = 'Presupuestos de Reparacion';
+        const claveDocs = 'docs_' + HOJA_PRINCIPAL;
+        window._docsPorHoja = window._docsPorHoja || {};
 
         // 1) Pintar al instante con lo último que había (si existe)
         const abonosCache = cacheLeer('abonos');
         const docsCache = cacheLeer(claveDocs);
         if (abonosCache && !(window.listaAbonosBase || []).length) window.listaAbonosBase = abonosCache;
-        if (docsCache && !(window.documentosGuardados || []).length) window.documentosGuardados = docsCache;
+        if (docsCache && !window._docsPorHoja[HOJA_PRINCIPAL]) window._docsPorHoja[HOJA_PRINCIPAL] = docsCache;
         if (abonosCache || docsCache) { armarDiccionarioCuit(); refrescarVistas(); }
 
         // 2) Pedir todo en paralelo (antes era secuencial)
         const [rAbonos, rDocs, rHist] = await Promise.allSettled([
             llamarAPI({ accion: 'obtenerAbonosBD' }),
-            llamarAPI({ accion: 'obtenerDocumentosBD', payload: { hoja } }),
+            llamarAPI({ accion: 'obtenerDocumentosBD', payload: { hoja: HOJA_PRINCIPAL } }),
             (typeof window.cargarDatosBase === 'function') ? window.cargarDatosBase() : Promise.resolve(),
         ]);
 
@@ -292,8 +297,13 @@
             cacheGuardar('abonos', window.listaAbonosBase);
         }
         if (rDocs.status === 'fulfilled') {
-            window.documentosGuardados = rDocs.value || [];
-            cacheGuardar(claveDocs, window.documentosGuardados);
+            window._docsPorHoja[HOJA_PRINCIPAL] = rDocs.value || [];
+            cacheGuardar(claveDocs, window._docsPorHoja[HOJA_PRINCIPAL]);
+            // Si el usuario ya está viendo Presupuestos, se refresca esa lista en pantalla
+            if (hojaActual() === HOJA_PRINCIPAL) {
+                window.documentosGuardados = window._docsPorHoja[HOJA_PRINCIPAL];
+                window._hojaDocsCargada = HOJA_PRINCIPAL;
+            }
         }
 
         armarDiccionarioCuit();

@@ -115,6 +115,16 @@ async function obtenerYRenderizarCreados(forzarRecarga = false) {
     const contenedor = document.getElementById('contenedor-informes-creados');
     if (!contenedor) return;
 
+    const hojaReq = modoApp === 'ofertas' ? HOJA_OFERTAS : HOJA_PRESUPUESTOS;
+
+    // Los documentos en memoria deben ser de la hoja del modo actual; si no, se descartan.
+    // (Evita mostrar datos de "Ofertas" dentro de "Presupuestos" o al revés.)
+    if (!forzarRecarga && window._hojaDocsCargada !== hojaReq) {
+        const pre = window._docsPorHoja && window._docsPorHoja[hojaReq];
+        if (pre && pre.length) { documentosGuardados = pre; window._hojaDocsCargada = hojaReq; }
+        else documentosGuardados = [];
+    }
+
     // Si no tenemos documentos o forzamos recarga, pedimos al servidor
     if (forzarRecarga || !documentosGuardados || documentosGuardados.length === 0) {
         contenedor.innerHTML = `
@@ -126,10 +136,15 @@ async function obtenerYRenderizarCreados(forzarRecarga = false) {
                 </div>`).join('')}
             </div>`;
 
-        const hojaReq = modoApp === 'ofertas' ? HOJA_OFERTAS : HOJA_PRESUPUESTOS;
-
         try {
-            documentosGuardados = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: hojaReq } });
+            const docsNuevos = await llamarAPI({ accion: "obtenerDocumentosBD", payload: { hoja: hojaReq } });
+            // Si mientras tanto cambió el modo, esta respuesta ya no corresponde a lo que se está viendo
+            const hojaAhora = modoApp === 'ofertas' ? HOJA_OFERTAS : HOJA_PRESUPUESTOS;
+            window._docsPorHoja = window._docsPorHoja || {};
+            window._docsPorHoja[hojaReq] = docsNuevos;
+            if (hojaAhora !== hojaReq) return;
+            documentosGuardados = docsNuevos;
+            window._hojaDocsCargada = hojaReq;
             _invalidarCuitSet();
         } catch(e) {
             const esRedeploy = e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'));
@@ -800,6 +815,7 @@ function renderizarTarjetas() {
                 ${maquinasHTML}
                 ${selectsHTML}
                 ${selectTipoDocHTML} 
+                ${anulado && doc.numNC ? `<button class="btn-ncr-fix" onclick="abrirRevisionNC('${doc.numNC}')">🔧 Corregir qué factura anula ${doc.numNC}</button>` : ''}
                 <div style="display:flex; gap:8px; margin-top:4px;">
                     <button class="btn-doc-edit" style="flex:1; min-height:44px;" onclick="editarDocumento(${doc.id})">✏️ Editar</button>
                     <button onclick="verPDFFactura(${doc.id}, this)" onmouseenter="precargarPDFFactura(${doc.id})" ontouchstart="precargarPDFFactura(${doc.id})"
@@ -1527,9 +1543,10 @@ async function confirmarSincronizacionARCA() {
     }
     
     try {
-        const respuesta = await llamarAPI({ accion: "sincronizarConBaseARCA" });
+        const respuesta = await llamarAPI({ accion: "sincronizarConBaseARCA" }, 120000);
         mostrarMensaje('🚀 ' + respuesta, 'exito');
-        obtenerYRenderizarCreados(); 
+        await obtenerYRenderizarCreados(true);
+        if (/para revisar/.test(String(respuesta))) abrirRevisionNC();
     } catch (e) {
         mostrarMensaje('❌ Error: ' + e.message, 'error');
     } finally {
@@ -1553,10 +1570,11 @@ async function vincularARCADesdePresupuestar() {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Vinculando...'; }
     mostrarMensaje('Analizando ARCA para presupuestos... ⏳', 'cargando');
     try {
-        const respuesta = await llamarAPI({ accion: 'sincronizarConBaseARCA' });
+        const respuesta = await llamarAPI({ accion: 'sincronizarConBaseARCA' }, 120000);
         mostrarMensaje('🚀 ' + respuesta, 'exito');
         // Recargar documentos para reflejar facturas vinculadas
-        await obtenerYRenderizarCreados();
+        await obtenerYRenderizarCreados(true);
+        if (/para revisar/.test(String(respuesta))) abrirRevisionNC();
     } catch(e) {
         mostrarMensaje('❌ Error: ' + e.message, 'error');
     } finally {
@@ -2026,4 +2044,152 @@ function _initMesesScroll(el) {
 
     el.addEventListener('scroll', () => _actualizarFlechasMeses(el), { passive: true });
     window.addEventListener('resize', () => _actualizarFlechasMeses(el));
+}
+
+// ════════════════════════════════════════════════════════════════
+//  🔎 REVISIÓN DE NOTAS DE CRÉDITO
+//  Pregunta qué factura anula cada nota cuando el algoritmo no puede decidirlo solo
+//  (hay una igual del mismo día / hasta 5 días después, o el importe no coincide)
+//  y permite corregir vínculos anteriores.
+// ════════════════════════════════════════════════════════════════
+function _ncrEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const _ncrMoneda = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+
+function cerrarRevisionNC() {
+    document.getElementById('_modal-nc')?.remove();
+    if (window._ncrCambios) {
+        window._ncrCambios = false;
+        obtenerYRenderizarCreados(true);        // refresca la lista con lo corregido
+    }
+}
+
+async function abrirRevisionNC(ncForzada) {
+    document.getElementById('_modal-nc')?.remove();
+    window._ncrCambios = false;
+
+    const ov = document.createElement('div');
+    ov.id = '_modal-nc';
+    ov.className = 'ncr-overlay';
+    ov.innerHTML = `
+        <div class="ncr-box">
+            <div class="ncr-head">
+                <div>
+                    <h3>🔎 ${ncForzada ? 'Corregir nota de crédito' : 'Notas de crédito para revisar'}</h3>
+                    <p id="ncr-sub">Buscando en Base ARCA…</p>
+                </div>
+                <button class="ncr-x" onclick="cerrarRevisionNC()">✕</button>
+            </div>
+            <div class="ncr-body" id="ncr-body">
+                <div class="ncr-cargando"><span class="spinner-mini"></span> Analizando notas de crédito…</div>
+            </div>
+        </div>`;
+    ov.addEventListener('click', e => { if (e.target === ov) cerrarRevisionNC(); });
+    document.body.appendChild(ov);
+
+    try {
+        const res = await llamarAPI({ accion: 'obtenerRevisionNotasCredito', payload: ncForzada ? { nc: ncForzada } : {} }, 90000);
+        if (!res || !res.ok) throw new Error((res && res.error) || 'No se pudo analizar.');
+        window._ncrItems = res.items || [];
+        _ncrRender();
+    } catch (e) {
+        const b = document.getElementById('ncr-body');
+        if (b) b.innerHTML = `<div class="ncr-vacio">❌ ${_ncrEsc(e.message)}</div>`;
+    }
+}
+
+function _ncrRender() {
+    const items = window._ncrItems || [];
+    const sub = document.getElementById('ncr-sub');
+    const body = document.getElementById('ncr-body');
+    if (!body) return;
+    const pend = items.filter(i => !i._hecho).length;
+    if (sub) sub.textContent = items.length
+        ? (pend ? `${pend} pendiente${pend > 1 ? 's' : ''} · elegí qué factura anula cada nota` : '✅ Todo resuelto')
+        : 'Nada para revisar';
+
+    if (!items.length) {
+        body.innerHTML = `<div class="ncr-vacio">✅ No hay notas de crédito dudosas.<br><span>Todas las notas de ARCA están vinculadas a una factura.</span></div>`;
+        return;
+    }
+
+    const textoMotivo = {
+        ambigua:          'Hay una factura igual del <b>mismo día (o hasta 5 días después)</b> y otra anterior. Si se anuló y se volvió a emitir igual, elegí cuál es la que se anula.',
+        sin_factura:      'Ninguna factura de este CUIT tiene el <b>mismo importe</b> (¿nota de crédito parcial?). Elegí la factura que corresponde:',
+        revisar_asignada: 'Se vinculó automáticamente, pero hay otra posibilidad. Confirmá cuál es la correcta.',
+        corregir:         'Elegí la factura que realmente anula esta nota de crédito.'
+    };
+    const relTxt = c => c.relacion === 'mismo_dia' ? 'mismo día de la nota'
+                     : c.relacion === 'posterior' ? `${c.difDias} día${c.difDias > 1 ? 's' : ''} después de la nota`
+                     : `${Math.abs(c.difDias)} día${Math.abs(c.difDias) === 1 ? '' : 's'} antes de la nota`;
+
+    body.innerHTML = items.map((it, i) => {
+        if (it._hecho) return `<div class="ncr-card ncr-hecho"><b>✅ ${_ncrEsc(it.nc)}</b> — ${_ncrEsc(it._hecho)}</div>`;
+        const cands = (it.candidatas || []).map(c => `
+            <label class="ncr-cand">
+                <input type="radio" name="ncr-${i}" value="${_ncrEsc(c.nro)}" onchange="document.getElementById('ncr-ok-${i}').disabled=false">
+                <div class="ncr-cand-txt">
+                    <div><b>Factura ${_ncrEsc(c.nro)}</b>
+                        ${c.nro === it.asignada ? '<span class="ncr-tag actual">vinculada ahora</span>' : ''}
+                        ${c.nro === it.sugerida && c.nro !== it.asignada ? '<span class="ncr-tag sug">anterior más cercana</span>' : ''}
+                        ${c.relacion !== 'anterior' ? '<span class="ncr-tag cerca">' + (c.relacion === 'mismo_dia' ? 'mismo día' : 'posterior') + '</span>' : ''}
+                        ${!c.mismoImporte ? '<span class="ncr-tag dif">importe distinto</span>' : ''}
+                        ${!c.existe ? '<span class="ncr-tag nueva">se agrega a la lista</span>' : ''}
+                    </div>
+                    <div class="ncr-cand-meta">${_ncrEsc(c.fecha)} (${relTxt(c)}) · <b>${_ncrMoneda(c.importe)}</b>${c.cliente ? ' · ' + _ncrEsc(c.cliente) : ''}</div>
+                </div>
+            </label>`).join('') || `<div class="ncr-vacio" style="padding:10px;">No se encontraron facturas de este CUIT en Base ARCA.</div>`;
+
+        return `
+        <div class="ncr-card" id="ncr-card-${i}">
+            <div class="ncr-nc">🔄 <b>${_ncrEsc(it.nc)}</b> · ${_ncrEsc(it.fecha)} · <b>${_ncrMoneda(it.importe)}</b></div>
+            <div class="ncr-sub">${it.cliente ? _ncrEsc(it.cliente) + ' · ' : ''}CUIT ${_ncrEsc(it.cuit)}</div>
+            <div class="ncr-motivo">${textoMotivo[it.motivo] || ''}</div>
+            <div class="ncr-cands">${cands}</div>
+            <div class="ncr-err" id="ncr-err-${i}"></div>
+            <div class="ncr-actions">
+                <button class="ncr-ok" id="ncr-ok-${i}" disabled onclick="_ncrAplicar(${i})">✔ Anula la seleccionada</button>
+                <button class="ncr-no" onclick="_ncrIgnorar(${i})" title="Esta nota de crédito no anula ninguna factura (ej. nota parcial). No se vuelve a preguntar.">No anula ninguna</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function _ncrAplicar(i) {
+    const it = (window._ncrItems || [])[i];
+    const sel = document.querySelector(`input[name="ncr-${i}"]:checked`);
+    if (!it || !sel) return;
+    const btn = document.getElementById('ncr-ok-' + i);
+    const err = document.getElementById('ncr-err-' + i);
+    if (err) err.textContent = '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-mini"></span> Guardando…'; }
+    try {
+        const r = await llamarAPI({ accion: 'aplicarNotaCredito', payload: { nc: it.nc, factura: sel.value } }, 60000);
+        if (!r || !r.ok) throw new Error((r && r.error) || 'No se pudo guardar.');
+        it._hecho = r.mensaje || ('anula ' + sel.value);
+        window._ncrCambios = true;
+        _ncrRender();
+    } catch (e) {
+        if (err) err.textContent = '❌ ' + e.message;
+        if (btn) { btn.disabled = false; btn.textContent = '✔ Anula la seleccionada'; }
+    }
+}
+
+async function _ncrIgnorar(i) {
+    const it = (window._ncrItems || [])[i];
+    if (!it) return;
+    const ok = await modalConfirmar({
+        titulo: '¿No anula ninguna factura?',
+        mensaje: `${it.nc} quedará sin vincular y no se volverá a preguntar.` + (it.asignada ? `\nLa factura ${it.asignada} seguirá anulada hasta que la reasignes.` : ''),
+        icono: '🔄', color: '#d93025', btnOk: 'Confirmar', btnCancel: 'Volver'
+    });
+    if (!ok) return;
+    try {
+        const r = await llamarAPI({ accion: 'aplicarNotaCredito', payload: { nc: it.nc, ignorar: true } }, 60000);
+        if (!r || !r.ok) throw new Error((r && r.error) || 'No se pudo guardar.');
+        it._hecho = 'no anula ninguna factura';
+        _ncrRender();
+    } catch (e) {
+        const err = document.getElementById('ncr-err-' + i);
+        if (err) err.textContent = '❌ ' + e.message;
+    }
 }

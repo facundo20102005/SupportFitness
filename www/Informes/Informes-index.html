@@ -22,12 +22,12 @@
         Versión actual: v7 (19/05/2025)
     -->
     <!-- ORDEN ESTRICTO DE CARGA -->
-    <script src="inf-config.js?v=17" defer></script>
-    <script src="inf-api.js?v=17" defer></script>
-    <script src="inf-abonos.js?v=17" defer></script>
-    <script src="inf-docs.js?v=17" defer></script>
-    <script src="inf-reparaciones.js?v=17" defer></script>
-    <script src="inf-ui.js?v=17" defer></script>
+    <script src="inf-config.js?v=18" defer></script>
+    <script src="inf-api.js?v=18" defer></script>
+    <script src="inf-abonos.js?v=18" defer></script>
+    <script src="inf-docs.js?v=18" defer></script>
+    <script src="inf-reparaciones.js?v=18" defer></script>
+    <script src="inf-ui.js?v=18" defer></script>
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -969,6 +969,49 @@
                      color: #94a3b8; font-weight: 800; font-size: 13px; cursor: pointer; transition: background .2s, color .2s; }
         .visor-tab:hover { color: #e2e8f0; background: rgba(255,255,255,.09); }
         .visor-tab.activo { background: #1a73e8; color: #fff; }
+
+        /* ─── REVISIÓN DE NOTAS DE CRÉDITO ─── */
+        .btn-ncr-abrir { width: 100%; margin-top: 8px; padding: 11px; border-radius: 12px; cursor: pointer; font-weight: 800; font-size: 13px;
+                         background: rgba(251,146,60,.10); color: #fdba74; border: 1.5px solid rgba(251,146,60,.35); transition: background .2s, transform .2s; }
+        .btn-ncr-abrir:hover { background: rgba(251,146,60,.2); transform: translateY(-1px); }
+        body:not(.dark-mode) .btn-ncr-abrir { background: #fff3e0; color: #e65100; border-color: #ffcc80; }
+        .btn-ncr-fix { width: 100%; margin: 0 0 10px; padding: 9px; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 12px;
+                       background: rgba(251,146,60,.10); color: #fdba74; border: 1.5px dashed rgba(251,146,60,.45); }
+        .btn-ncr-fix:hover { background: rgba(251,146,60,.2); }
+
+        .ncr-overlay { position: fixed; inset: 0; z-index: 99998; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; padding: 12px; animation: seccionIn .25s ease both; }
+        .ncr-box { background: #0f172a; color: #e2e8f0; width: 100%; max-width: 640px; max-height: 92vh; display: flex; flex-direction: column; border-radius: 16px; border: 1px solid rgba(255,255,255,.1); overflow: hidden; }
+        .ncr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 16px 18px; background: #1e293b; }
+        .ncr-head h3 { margin: 0; font-size: 17px; font-weight: 900; }
+        .ncr-head p  { margin: 3px 0 0; font-size: 12px; color: #94a3b8; }
+        .ncr-x { border: none; background: #d93025; color: #fff; font-weight: 900; border-radius: 8px; padding: 7px 11px; cursor: pointer; }
+        .ncr-body { padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .ncr-cargando, .ncr-vacio { text-align: center; padding: 30px 12px; color: #94a3b8; font-weight: 700; }
+        .ncr-vacio span { font-weight: 500; font-size: 12px; }
+        .ncr-card { background: #1a1f2e; border: 1px solid rgba(255,255,255,.08); border-left: 4px solid #fb923c; border-radius: 12px; padding: 14px; animation: seccionIn .3s ease both; }
+        .ncr-card.ncr-hecho { border-left-color: #4ade80; color: #86efac; font-size: 13px; padding: 11px 14px; }
+        .ncr-nc  { font-size: 15px; }
+        .ncr-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .ncr-motivo { font-size: 12px; color: #cbd5e1; background: rgba(251,146,60,.08); border-radius: 8px; padding: 8px 10px; margin: 10px 0; line-height: 1.5; }
+        .ncr-cands { display: flex; flex-direction: column; gap: 6px; }
+        .ncr-cand { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,.1); cursor: pointer; transition: border-color .2s, background .2s; }
+        .ncr-cand:hover { border-color: rgba(96,165,250,.5); background: rgba(96,165,250,.06); }
+        .ncr-cand:has(input:checked) { border-color: #60a5fa; background: rgba(59,130,246,.16); box-shadow: 0 0 0 1px rgba(96,165,250,.3); }
+        .ncr-cand input { margin-top: 3px; accent-color: #3b82f6; width: 17px; height: 17px; flex-shrink: 0; }
+        .ncr-cand-meta { font-size: 12px; color: #94a3b8; margin-top: 3px; }
+        .ncr-tag { display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; margin-left: 4px; vertical-align: 1px; }
+        .ncr-tag.actual { background: rgba(251,146,60,.18); color: #fdba74; }
+        .ncr-tag.sug    { background: rgba(96,165,250,.18); color: #93c5fd; }
+        .ncr-tag.cerca  { background: rgba(192,132,252,.18); color: #d8b4fe; }
+        .ncr-tag.dif    { background: rgba(248,113,113,.18); color: #fca5a5; }
+        .ncr-tag.nueva  { background: rgba(148,163,184,.2);  color: #cbd5e1; }
+        .ncr-err { color: #fca5a5; font-size: 12px; font-weight: 700; margin-top: 8px; }
+        .ncr-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .ncr-ok { flex: 2; padding: 11px; border: none; border-radius: 10px; background: linear-gradient(135deg,#1a73e8,#1557b0); color: #fff; font-weight: 900; cursor: pointer; transition: opacity .2s, transform .2s; }
+        .ncr-ok:disabled { opacity: .35; cursor: not-allowed; }
+        .ncr-ok:not(:disabled):hover { transform: translateY(-1px); }
+        .ncr-no { flex: 1; padding: 11px 8px; border-radius: 10px; background: transparent; border: 1.5px solid rgba(255,255,255,.15); color: #94a3b8; font-weight: 700; font-size: 12px; cursor: pointer; }
+        .ncr-no:hover { color: #e2e8f0; border-color: rgba(255,255,255,.3); }
     </style>
 </head>
 <body>
@@ -1160,6 +1203,9 @@
                 <div id="arca-container" style="display:none; margin-bottom:14px;">
                     <button class="btn-arca" onclick="ejecutarSincronizacionARCA()">
                         🔄 Sincronizar con Base ARCA
+                    </button>
+                    <button class="btn-ncr-abrir" onclick="abrirRevisionNC()">
+                        🔎 Revisar notas de crédito
                     </button>
                 </div>
                 <div class="inf-card">
