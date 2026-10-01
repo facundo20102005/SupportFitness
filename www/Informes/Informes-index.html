@@ -28,6 +28,7 @@
     <script src="inf-docs.js?v=18" defer></script>
     <script src="inf-reparaciones.js?v=18" defer></script>
     <script src="inf-ui.js?v=18" defer></script>
+    <script src="inf-clientes.js?v=1" defer></script>
     <style>
         /* ════════════════════════════════════════════════════════
            INFORMES — Sistema de Diseño Completo
@@ -1012,6 +1013,10 @@
         .ncr-ok:not(:disabled):hover { transform: translateY(-1px); }
         .ncr-no { flex: 1; padding: 11px 8px; border-radius: 10px; background: transparent; border: 1.5px solid rgba(255,255,255,.15); color: #94a3b8; font-weight: 700; font-size: 12px; cursor: pointer; }
         .ncr-no:hover { color: #e2e8f0; border-color: rgba(255,255,255,.3); }
+        /* ─── Botón clientes (inf-clientes.js) ─── */
+        .btn-clientes-abrir { width:100%; margin:-4px 0 16px; padding:12px; border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; font-family:inherit; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--inf-card); color:var(--inf-azul); border:1px solid var(--inf-border); box-shadow:var(--inf-shadow); transition:transform .2s, background .2s; }
+        .btn-clientes-abrir:hover { background:var(--inf-azul-lt); transform:translateY(-1px); }
+        .btn-clientes-abrir:active { transform:scale(.98); }
     </style>
 </head>
 <body>
@@ -1030,6 +1035,11 @@
                 <span class="tab-icon">📋</span>Abonos
             </button>
         </div>
+
+        <!-- ══════ BOTÓN CLIENTES (Base Abonos) ══════ -->
+        <button class="btn-clientes-abrir" onclick="abrirClientesInf()">
+            👥 Ver Clientes
+        </button>
 
         <!-- ══════ ABONOS ══════ -->
         <div id="seccion-abonos" style="display:none;">
