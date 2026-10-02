@@ -1152,36 +1152,42 @@ function abrirVistaPresupuesto(id, btnEl) {
 
 
 // ─────────────────────────────────────────────────────────────────
-//  📧 PREPARAR MAIL — abre Outlook Web Compose directamente
+//  📧 PREPARAR MAIL — abre Gmail Compose directamente
 //  FIX: usa encodeURIComponent (no URLSearchParams) para evitar
-//  que los espacios se conviertan en "+" en Outlook Web.
-//  Templates exactos de Notas_SupportFitness.md
-// ─────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────
-//  📧 PREPARAR MAIL — abre Outlook Web Compose directamente
-//  FIX: usa encodeURIComponent (no URLSearchParams) para evitar
-//  que los espacios se conviertan en "+" en Outlook Web.
+//  que los espacios se conviertan en "+" en Gmail.
 //  Templates exactos de Notas_SupportFitness.md
 // ─────────────────────────────────────────────────────────────────
 
 // Helper: construye URL de Outlook sin el bug del "+"
+/*
 function _urlOutlook(to, subject, body) {
     const base = 'https://outlook.live.com/mail/0/deeplink/compose?';
     const q = (to      ? 'to='      + encodeURIComponent(to)      + '&' : '') +
               'subject=' + encodeURIComponent(subject) + '&' +
               'body='    + encodeURIComponent(body);
     return base + q;
+}*/
+
+// Abre la ventana de redacción de Gmail con la cuenta empresarial ya elegida
+function _urlGmail(to, subject, body) {
+    const limpios = String(to || '')
+        .replace(/\([^)]*\)/g, '')
+        .split(/[,;\/\s]+/)
+        .map(e => e.trim())
+        .filter(e => e.indexOf('@') > 0)
+        .join(',');
+
+    // Formato mailto: Gmail lo abre en su interfaz normal (bandeja + ventana flotante)
+    const mailto = 'mailto:' + limpios
+        + '?subject=' + encodeURIComponent(subject)
+        + '&body='    + encodeURIComponent(String(body).replace(/\n/g, '\r\n'));
+
+    return 'https://mail.google.com/mail/?authuser=' + encodeURIComponent(SF_GMAIL_CUENTA)
+        + '&extsrc=mailto&url=' + encodeURIComponent(mailto);
 }
 
 const _FIRMA = [
     '',
-    'Cordiales saludos.',
-    'Facundo Durán',
-    '',
-    'SUPPORT FITNESS',
-    'SERVICIO TÉCNICO PARA GIMNASIOS.',
-    'CEL. 11 6117-7878.'
 ].join('\n');
 
 function prepararMail(id) {
@@ -1217,7 +1223,7 @@ function prepararMail(id) {
         ].join('\n');
     }
 
-    window.open(_urlOutlook('', asunto, cuerpo), '_blank');
+    window.open(_urlGmail('', asunto, cuerpo), '_blank');
 }
 
 

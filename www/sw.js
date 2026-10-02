@@ -13,7 +13,7 @@
 //  el precache ignora la caché HTTP, e imágenes = Cache-First.
 // ════════════════════════════════════════════════════════════════
 
-const CACHE_VER  = 'sf-20260929-0002';   // subilo igual en cada deploy (limpia cachés viejas)
+const CACHE_VER  = 'sf-20261002-0002';   // subilo igual en cada deploy (limpia cachés viejas)
 const CACHE_NAME = `support-fitness-${CACHE_VER}`;
 
 const PRECACHE = [

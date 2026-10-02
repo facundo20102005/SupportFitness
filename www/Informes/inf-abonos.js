@@ -571,11 +571,30 @@ function guardarFacturaAbono(orden, idMes) {
     .catch(() => mostrarMensaje('❌ Error de red al guardar', 'error'));
 }
 
-// ════════════════════════════════════════════════════════════════
-// ════════════════════════════════════════════════════════════════
-//  📧 ABRIR CORREO DE ABONO EN OUTLOOK WEB (prellenado)
-//  Template exacto de Notas_SupportFitness.md — Facturación mensual
-// ════════════════════════════════════════════════════════════════
+// ── Formato del correo de abonos (ajustá acá) ────────────────────
+const MAIL_FUENTE   = 'Arial, Helvetica, sans-serif';
+const MAIL_TAM      = '14px';     // tamaño de todo el texto
+const MAIL_ROJO     = '#ff0000';  // color de la frase final
+const MAIL_ROJO_TAM = '16px';     // tamaño de la frase en rojo (poné '14px' si no la querés más grande)
+
+function _escHTML(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function _copiarCorreoFormateado(html, textoPlano) {
+    try {
+        await navigator.clipboard.write([new ClipboardItem({
+            'text/html':  new Blob([html],       { type: 'text/html' }),
+            'text/plain': new Blob([textoPlano], { type: 'text/plain' })
+        })]);
+        return true;
+    } catch (e) {
+        console.warn('No se pudo copiar con formato:', e);
+        return false;
+    }
+}
+
 async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, precio, factura) {
     const txtArea   = document.getElementById('txt-mail-' + orden);
     const correos   = txtArea ? txtArea.value.trim() : '';
@@ -584,34 +603,51 @@ async function enviarCorreoAbonoAutomatico(orden, idMes, gimnasio, periodo, prec
 
     const ok = await modalConfirmar({
         titulo:    '📧 Preparar correo de facturación',
-        mensaje:   'Se abrirá Outlook Web con el correo prellenado.\n\n' +
+        mensaje:   'Se abrirá Gmail y el mensaje quedará copiado con formato.\n' +
+                   'Hacé clic en el cuerpo del correo y pegalo con Ctrl+V.\n\n' +
                    '🏋️ Cliente: ' + gimnasio + '\n' +
                    '📅 Periodo: ' + periodo + ' ' + anio + '\n' +
                    (factura ? '📄 Factura: ' + factura + '\n' : '') +
                    '💰 Importe: ' + precioFmt +
-                   (correos ? '\n📧 Para: ' + correos : '\n⚠️ Sin correo — podés editarlo en Outlook'),
+                   (correos ? '\n📧 Para: ' + correos : '\n⚠️ Sin correo — podés cargarlo en Gmail'),
         icono:     '📬',
         color:     '#0f9d58',
-        btnOk:     'Abrir Outlook',
+        btnOk:     'Abrir Gmail',
         btnCancel: 'Cancelar'
     });
     if (!ok) return;
 
-    // Template FACTURACIÓN MENSUAL — texto plano (Notas_SupportFitness.md)
     const asunto = 'Factura Gimnasio - ' + gimnasio;
-    const cuerpo = [
-        'Buenas tardes, Señores de administración.',
-        '',
-        'Adjunto factura por el mantenimiento preventivo del Gimnasio periodo ' + periodo + ' ' + anio + ' y número de cuenta para realizar transferencia a la brevedad.',
-        (factura ? 'Factura N°: ' + factura : ''),
-        '',
-        'Por favor, confirmar recepción.',
-        _FIRMA
-    ].filter(l => l !== null).join('\n');
+    const textoAdjunto = 'Adjunto factura por el mantenimiento preventivo del Gimnasio periodo ' +
+                         periodo + ' ' + anio + ' y número de cuenta para realizar transferencia a la brevedad.';
+    const textoRojo = 'Por favor, confirmar recepción.';
 
-    window.open(_urlOutlook(correos, asunto, cuerpo), '_blank');
+    const fila  = t => '<div>' + t + '</div>';
+    const vacia = '<div><br></div>';
+    const html =
+        '<div style="font-family:' + MAIL_FUENTE + '; font-size:' + MAIL_TAM + '; color:#000000;">' +
+            fila('Buenas tardes, Señores de administración.') + vacia +
+            fila(_escHTML(textoAdjunto)) +
+            (factura ? fila('Factura N°: ' + _escHTML(factura)) : '') + vacia +
+            fila('<b style="color:' + MAIL_ROJO + '; font-size:' + MAIL_ROJO_TAM + ';">' + textoRojo + '</b>') +
+        '</div>';
+
+    const plano = [
+        'Buenas tardes, Señores de administración.', '',
+        textoAdjunto,
+        (factura ? 'Factura N°: ' + factura : ''), '',
+        textoRojo
+    ].join('\n');
+
+    const copiado = await _copiarCorreoFormateado(html, plano);
+    if (copiado) {
+        window.open(_urlGmail(correos, asunto, ''), '_blank');
+        mostrarMensaje('📋 Mensaje copiado con formato. En Gmail, hacé clic en el cuerpo y pegá con Ctrl+V.', 'exito');
+    } else {
+        window.open(_urlGmail(correos, asunto, plano), '_blank');
+        mostrarMensaje('⚠️ No se pudo copiar con formato; el mensaje va en texto simple.', 'error');
+    }
 }
-
 
 function marcarComoEnviado(orden, idMes) {
     let mesIdx = parseInt(idMes.split("/")[0], 10) - 1;

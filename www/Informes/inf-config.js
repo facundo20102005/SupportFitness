@@ -155,3 +155,6 @@ const FUENTES_DOLAR = [
         },
     },
 ];
+// ── CORREO ──────────────────────────────────────────────────────
+// Cuenta de Gmail empresarial desde la que se envían las facturas
+const SF_GMAIL_CUENTA = "serviciotecnico@support-fitness.com";   // ← poné acá la dirección real
