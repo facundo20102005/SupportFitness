@@ -1687,6 +1687,18 @@ function generarPDFListaMensual() {
                 ).join('')}
             </div>
 
+            <label style="font-size:11px;font-weight:800;color:var(--inf-sub,#94a3b8);text-transform:uppercase;letter-spacing:0.4px;display:block;margin-bottom:6px;">FILTRAR POR CLIENTE</label>
+            <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+                ${[['todos','Todos','#1a73e8'],['abonados','Abonados','#60a5fa'],['noabonados','No abonados','#fb923c']].map(([v,l,c]) =>
+                    `<button data-cli="${v}" onclick="_lpdfSetCliente('${v}')"
+                        style="padding:6px 12px;border-radius:8px;border:1.5px solid ${c};
+                               background:${v==='todos'?c:'transparent'};color:${v==='todos'?'white':c};
+                               font-size:12px;font-weight:700;cursor:pointer;">
+                        ${l}
+                    </button>`
+                ).join('')}
+            </div>
+
             <div id="_lpdf-preview" style="font-size:12px;color:var(--inf-muted,#94a3b8);margin-bottom:18px;padding:8px 12px;
                 background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
                 Calculando...
@@ -1711,6 +1723,7 @@ function generarPDFListaMensual() {
     }
 
     window._lpdfTipoActual = 'todos';
+    window._lpdfClienteActual = 'todos';
     _lpdfActualizarPreview();
 
     ['_lpdf-desde','_lpdf-hasta'].forEach(function(id) {
@@ -1733,10 +1746,45 @@ function _lpdfSetTipo(btn, tipo) {
     _lpdfActualizarPreview();
 }
 
+window._lpdfClienteActual = 'todos';
+
+function _lpdfSetCliente(valor) {
+    window._lpdfClienteActual = valor;
+    document.querySelectorAll('[data-cli]').forEach(function(b) {
+        const colors = {todos:'#1a73e8', abonados:'#60a5fa', noabonados:'#fb923c'};
+        const c = colors[b.dataset.cli] || '#1a73e8';
+        b.style.background = b.dataset.cli === valor ? c : 'transparent';
+        b.style.color      = b.dataset.cli === valor ? 'white' : c;
+    });
+    _lpdfActualizarPreview();
+}
+
+// Un cliente es "abonado" si su CUIT (o, si la factura no tiene CUIT, su nombre) está en la hoja Base Abonos
+function _lpdfCrearEsAbonado() {
+    const norm = function(s) {
+        return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    };
+    const cuits = new Set();
+    const nombres = new Set();
+    (window.listaAbonosBase || []).forEach(function(a) {
+        const c = String(a.cuit || '').replace(/\D/g, '');
+        if (c.length >= 8) cuits.add(c);
+        const n = norm(a.gym);
+        if (n) nombres.add(n);
+    });
+    return function(doc) {
+        const c = String(doc.cuit || '').replace(/\D/g, '');
+        if (c.length >= 8 && cuits.has(c)) return true;
+        return nombres.has(norm(doc.cliente));
+    };
+}
+
 function _lpdfFiltrarDocs() {
     const desde = document.getElementById('_lpdf-desde')?.value;
     const hasta = document.getElementById('_lpdf-hasta')?.value;
     const tipo  = window._lpdfTipoActual || 'todos';
+    const filtroCliente = window._lpdfClienteActual || 'todos';
+    const esAbonado = filtroCliente === 'todos' ? null : _lpdfCrearEsAbonado();
     
     // 🔥 CAPTURA EL TEXTO MIENTRAS ESCRIBÍS 🔥
     const textoBuscado = (document.getElementById('_lpdf-filtro-cliente')?.value || '').toLowerCase().trim();
@@ -1752,6 +1800,11 @@ function _lpdfFiltrarDocs() {
         if (desde && fecha < desde) return false;
         if (hasta && fecha > hasta) return false;
         if (tipo !== 'todos' && doc._tipo !== tipo) return false;
+        if (esAbonado) {
+            const abonado = esAbonado(doc);
+            if (filtroCliente === 'abonados' && !abonado) return false;
+            if (filtroCliente === 'noabonados' && abonado) return false;
+        }
         
         // 🔥 FILTRO INTELIGENTE TIPO GOOGLE 🔥
         if (textoBuscado) {
@@ -1801,7 +1854,8 @@ async function _generarListaPDFEjecutar() {
     
     // Captura para el cartel superior del PDF
     const textoBuscado = document.getElementById('_lpdf-filtro-cliente')?.value.trim();
-    const subTituloCliente = textoBuscado ? `Filtro: "${textoBuscado}"` : 'Todos los Gimnasios';
+    const _etqCliente = { abonados: 'Solo abonados', noabonados: 'Solo no abonados' }[window._lpdfClienteActual];
+    const subTituloCliente = (textoBuscado ? `Filtro: "${textoBuscado}"` : 'Todos los Gimnasios') + (_etqCliente ? ' · ' + _etqCliente : '');
     
     document.getElementById('_modal-lista-pdf')?.remove();
     mostrarMensaje('⏳ Generando PDF...', 'cargando');
