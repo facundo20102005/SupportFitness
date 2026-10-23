@@ -475,10 +475,35 @@ async function verPDFFactura(id, btnEl, fileId) {
     }
 }
 
+// "Factura B N°4251 Libertador 8008.pdf" / "Nota de Crédito B N°0203 Libertador 8008.pdf"
+function _nombreDescargaComprobante(doc, esNC) {
+    const raw   = esNC ? String(doc.numNC || '') : _numFacturaLimpio(doc.numFactura);
+    const m     = raw.match(/([ABC])\s*-\s*(\d+)/i);
+    const letra = m ? m[1].toUpperCase() : '';
+    const nro   = m ? m[2] : raw.replace(/\D/g, '');
+    const tipo  = esNC ? 'Nota de Crédito' : 'Factura';
+    const cliente = String(doc.cliente || '').replace(/[<>:"\/\\|?*\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+    return [tipo + (letra ? ' ' + letra : '') + (nro ? ' N°' + nro : ''), cliente].filter(Boolean).join(' ') + '.pdf';
+}
+
+// Descarga el comprobante que se está viendo, con nombre prolijo (el botón ⬇ del visor de Chrome usa un código raro)
+function _visorDescargar() {
+    const it  = (window._visorItems || [])[window._visorIdx || 0];
+    const doc = window._visorDoc;
+    if (!it || !doc) return;
+    const a = document.createElement('a');
+    a.href = it.entry.url;
+    a.download = _nombreDescargaComprobante(doc, !!it.esNC);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
 function _visorSeleccionar(i) {
     const items = window._visorItems || [];
     const it = items[i];
     if (!it) return;
+    window._visorIdx = i;
     const sel = it.entry.res.seleccionado;
     const $ = id => document.getElementById(id);
     if ($('_visor-iframe'))  $('_visor-iframe').src = it.entry.url + '#toolbar=1&navpanes=0&view=FitH';
@@ -493,9 +518,10 @@ function _mostrarVisorFactura(doc, entryF, entryN, avisos) {
     avisos = avisos || {};
 
     const items = [];
-    if (entryF) items.push({ tab: '📄 Factura ' + _numFacturaLimpio(doc.numFactura), entry: entryF });
-    if (entryN) items.push({ tab: '🔄 Nota de Crédito ' + String(doc.numNC || '').replace(/^NC\s*/i, ''), entry: entryN });
+    if (entryF) items.push({ tab: '📄 Factura ' + _numFacturaLimpio(doc.numFactura), entry: entryF, esNC: false });
+    if (entryN) items.push({ tab: '🔄 Nota de Crédito ' + String(doc.numNC || '').replace(/^NC\s*/i, ''), entry: entryN, esNC: true });
     window._visorItems = items;
+    window._visorDoc = doc;
 
     const selF = entryF ? entryF.res.seleccionado : null;
     const otros = (entryF && (entryF.res.archivos || []).length > 1)
@@ -527,6 +553,7 @@ function _mostrarVisorFactura(doc, entryF, entryN, avisos) {
                     <div style="font-size:11px; color:#94a3b8;">${doc.cliente} · ${doc.numFactura}</div>
                 </div>
                 <button onclick="window.open(window._visorUrlActual,'_blank')" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:transparent; color:#e2e8f0; font-weight:700; font-size:12px; cursor:pointer;">↗ Abrir</button>
+                <button onclick="_visorDescargar()" title="Descargar con nombre prolijo" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(96,165,250,0.5); background:rgba(26,115,232,0.18); color:#93c5fd; font-weight:800; font-size:12px; cursor:pointer;">⬇ Descargar</button>
                 <a id="_visor-drive" href="#" target="_blank" rel="noopener" style="padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; font-weight:700; font-size:12px; text-decoration:none;">Drive</a>
                 <button onclick="document.getElementById('_visor-factura').remove()" style="padding:8px 12px; border-radius:8px; border:none; background:#d93025; color:white; font-weight:900; font-size:12px; cursor:pointer;">✕ Cerrar</button>
             </div>
