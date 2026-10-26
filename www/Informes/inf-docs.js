@@ -1,6 +1,124 @@
 console.info('[inf-docs] build 2026-09-30 · Notas de crédito / Ver PDF doble');
 // ── inf-docs.js — Documentos, ítems, PDF y correo ─────────────
 
+// ── Refresco instantáneo: estilos (sin animación al redibujar, aviso flotante, resaltado) ──
+(function () {
+    if (document.getElementById('inf-docs-refresco-css')) return;
+    const st = document.createElement('style');
+    st.id = 'inf-docs-refresco-css';
+    st.textContent = `
+    #contenedor-informes-creados.sin-anim .doc-card-v3 { animation: none !important; }
+    #status-informe {
+        position: fixed !important; left: 50%; bottom: 18px; transform: translateX(-50%);
+        z-index: 100001; width: auto; max-width: min(92vw, 520px); margin: 0 !important;
+        box-shadow: 0 8px 28px rgba(0,0,0,.35); text-align: center; animation: none !important;
+    }
+    .doc-card-v3.doc-flash { animation: docFlash 1.6s ease-out 1 !important; }
+    @keyframes docFlash {
+        0%   { box-shadow: 0 0 0 0 rgba(26,115,232,.75); }
+        60%  { box-shadow: 0 0 0 10px rgba(26,115,232,0); }
+        100% { box-shadow: 0 0 0 0 rgba(26,115,232,0); }
+    }`;
+    document.head.appendChild(st);
+})();
+
+// Redibuja la lista SIN animación y SIN mover el scroll (para cambios de estado, edición, etc.)
+function refrescarListaQuieto() {
+    const cont = document.getElementById('contenedor-informes-creados');
+    if (!cont) return;
+    cont.classList.add('sin-anim');
+    renderizarTarjetas();
+    // se quita la clase recién después del próximo cuadro, así la animación no se repite
+    requestAnimationFrame(() => requestAnimationFrame(() => cont.classList.remove('sin-anim')));
+}
+
+// Nombres cambiados a mano en esta sesión (por CUIT): ganan sobre el "nombre automático por CUIT"
+window._nombreManualPorCuit = window._nombreManualPorCuit || {};
+
+// Aplica un nombre a TODAS las facturas locales con ese CUIT (se ve al instante) y a la lista de No abonados.
+// cuitAnterior (opcional): si además cambió el CUIT, las facturas se buscan por el viejo y quedan con el nuevo.
+function _aplicarNombrePorCuitLocal(cuit, nombre, cuitAnterior) {
+    const dig    = String(cuit || '').replace(/\D/g, '');
+    const digOld = String(cuitAnterior || '').replace(/\D/g, '');
+    if (!nombre || (dig.length < 8 && digOld.length < 8)) return 0;
+    if (dig.length >= 8) window._nombreManualPorCuit[dig] = nombre;
+    if (digOld && digOld !== dig) delete window._nombreManualPorCuit[digOld];
+
+    let n = 0;
+    const listas = [documentosGuardados, (window._docsPorHoja || {})[HOJA_PRESUPUESTOS]];
+    const vistos = new Set();
+    listas.forEach(l => (l || []).forEach(d => {
+        if (vistos.has(d)) return; vistos.add(d);
+        const dd = String(d.cuit || '').replace(/\D/g, '');
+        if (dd !== dig && dd !== digOld) return;
+        let toco = false;
+        if (d.cliente !== nombre) { d.cliente = nombre; toco = true; }
+        if (dig.length >= 8 && dd !== dig) { d.cuit = String(cuit); toco = true; }
+        if (toco) n++;
+    }));
+    try {
+        const dic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
+        Object.keys(dic).forEach(k => {
+            const kd = String(k).replace(/\D/g, '');
+            if (kd === digOld && digOld !== dig) delete dic[k];
+            else if (kd === dig) dic[k] = nombre;
+        });
+        if (dig.length >= 8) dic[dig] = nombre;
+        localStorage.setItem('cuitGlobalDic', JSON.stringify(dic));
+    } catch (e) {}
+
+    // lista de No abonados (si ya está cargada en memoria)
+    (window.listaNoAbonados || []).forEach(r => {
+        const rd = String(r.cuit || '').replace(/\D/g, '');
+        if (rd && (rd === dig || rd === digOld)) r.gym = nombre;
+    });
+    try { if (typeof window._iclRefrescar === 'function') window._iclRefrescar(); } catch (e) {}
+    return n;
+}
+
+// Lo usa la pestaña "No abonados" al guardar: deja el nombre nuevo en todas las facturas y repinta sin mover la lista
+window.aplicarNombreClienteEnTodo = function (cuit, nombre, cuitAnterior) {
+    const n = _aplicarNombrePorCuitLocal(cuit, nombre, cuitAnterior);
+    const cont = document.getElementById('contenedor-informes-creados');
+    if (cont && cont.children.length && documentosGuardados.length) refrescarListaQuieto();
+    return n;
+};
+
+// Alta / modificación de un documento en la memoria local (para verlo sin recargar)
+function _guardarDocumentoLocal(datos, hoja) {
+    window._docsPorHoja = window._docsPorHoja || {};
+    const listas = [];
+    if (!window._hojaDocsCargada || window._hojaDocsCargada === hoja) listas.push(documentosGuardados);
+    const otra = window._docsPorHoja[hoja];
+    if (otra && !listas.includes(otra)) listas.push(otra);
+    if (!listas.length) listas.push(documentosGuardados);
+
+    listas.forEach(lista => {
+        const clon = Object.assign({}, datos, { items: Array.isArray(datos.items) ? datos.items.slice() : datos.items });
+        const idx = lista.findIndex(d => String(d.id) === String(datos.id));
+        if (idx >= 0) Object.assign(lista[idx], clon);
+        else lista.unshift(clon);
+    });
+    if (!window._docsPorHoja[hoja]) window._docsPorHoja[hoja] = documentosGuardados;
+    _invalidarCuitSet();
+}
+
+// Vuelve a la posición de la lista donde estabas antes de tocar "Editar"
+function _restaurarPosicionLista() {
+    const v = window._volverA;
+    if (!v) return;
+    window._volverA = null;
+    requestAnimationFrame(() => {
+        window.scrollTo(0, v.scrollY || 0);
+        const card = v.id != null ? document.querySelector(`#contenedor-informes-creados .doc-card-v3[data-id="${v.id}"]`) : null;
+        if (!card) return;
+        const r = card.getBoundingClientRect();
+        if (r.top < 70 || r.bottom > window.innerHeight - 10) card.scrollIntoView({ block: 'center' });
+        card.classList.remove('doc-flash'); void card.offsetWidth; card.classList.add('doc-flash');
+        setTimeout(() => card.classList.remove('doc-flash'), 1800);
+    });
+}
+
 async function guardarDocumento() {
     const cliente = document.getElementById('input-gym').value.trim();
     const frecObj = modoApp === 'ofertas' ? document.getElementById('informe-frecuencia').value : "";
@@ -59,8 +177,8 @@ async function guardarDocumento() {
             pagado: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.pagado || "Pendiente") : "Pendiente",
             cuit: cuitVal,
             numFactura: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.numFactura || "") : "",
-            // FIX: presupuestos creados manualmente siempre son Reparacion
-            tipoDoc: "Reparacion",
+            // Presupuestos NUEVOS creados a mano son Reparacion; al editar se respeta el tipo que ya tenía
+            tipoDoc: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.tipoDoc || "") : "Reparacion",
             remito: idEditando ? (documentosGuardados.find(i => i.id === idEditando)?.remito || "") : ""
         }
     };
@@ -69,8 +187,25 @@ async function guardarDocumento() {
     btn.disabled = true;
     mostrarMensaje('Sincronizando con la nube... ☁️', 'cargando');
 
+    // Datos de antes (para saber si cambió el nombre y poder propagarlo por CUIT)
+    const _prevDoc = idEditando ? documentosGuardados.find(i => i.id === idEditando) : null;
+    const _nombreAntes = _prevDoc ? String(_prevDoc.cliente || '') : '';
+
     try {
         await llamarAPI({ accion: "guardarDocumentoBD", payload: payloadDoc });
+
+        // 🔥 Reflejar el cambio YA en la lista (sin recargar la página) 🔥
+        const _editadoId = idEditando;
+        _guardarDocumentoLocal(payloadDoc.datos, payloadDoc.hoja);
+        const _cuitDig = String(cuitVal || '').replace(/\D/g, '');
+        if (_editadoId && _cuitDig.length >= 8 && cliente !== _nombreAntes) {
+            _aplicarNombrePorCuitLocal(cuitVal, cliente);
+            if (modoApp === 'presupuestos') {
+                // en segundo plano: que las demás facturas de ese CUIT también queden con el nombre nuevo en el Sheet
+                llamarAPI({ accion: 'renombrarClientePorCuit', payload: { cuit: cuitVal, nombre: cliente } })
+                    .catch(() => mostrarMensaje('⚠️ Se cambió el nombre acá, pero no se pudo actualizar en las otras facturas de ese CUIT.', 'error'));
+            }
+        }
         idEditando = null;
         
         document.getElementById('input-gym').value = '';
@@ -96,7 +231,7 @@ async function guardarDocumento() {
             if (btnPDF)  btnPDF.onclick  = (e) => abrirVistaPresupuesto(nuevoId, e.currentTarget);
             if (btnMail) btnMail.onclick = () => prepararMail(nuevoId);
         }
-        setTimeout(() => switchTab('creados'), 1500);
+        setTimeout(() => switchTab('creados'), 450);
     } catch (e) {
         const msg = e?.message || String(e) || 'Error desconocido';
         // [debug removed] console.error('guardarDocumento error:', e...)
@@ -178,7 +313,8 @@ async function obtenerYRenderizarCreados(forzarRecarga = false) {
     }
     
     // Si ya teníamos los datos precargados, los dibuja instantáneamente
-    renderizarTarjetas();
+    if (window._volverA) refrescarListaQuieto(); else renderizarTarjetas();
+    _restaurarPosicionLista();
 }
 
 // 🔥 FUNCIÓN TRADUCTORA DE FECHAS GOOGLE 🔥
@@ -569,6 +705,14 @@ function _mostrarVisorFactura(doc, entryF, entryN, avisos) {
 
 function renderizarTarjetas() {
     const contenedor = document.getElementById('contenedor-informes-creados');
+    // Si ya había tarjetas dibujadas, se conserva el scroll (no volver a la primera fila al redibujar)
+    const _yAntes = contenedor && contenedor.children.length ? window.scrollY : null;
+    _renderizarTarjetasBase();
+    if (_yAntes !== null && Math.abs(window.scrollY - _yAntes) > 2) window.scrollTo(0, _yAntes);
+}
+
+function _renderizarTarjetasBase() {
+    const contenedor = document.getElementById('contenedor-informes-creados');
     
     // 1. 🔥 MAGIA: RECUERDA QUÉ TARJETAS ESTABAN ABIERTAS ANTES DE BORRAR 🔥
     const tarjetasAbiertas = Array.from(contenedor.querySelectorAll('.doc-expand-v3.abierto'))
@@ -580,6 +724,8 @@ function renderizarTarjetas() {
     let cuitDic = JSON.parse(localStorage.getItem('cuitGlobalDic')) || {};
     documentosGuardados.forEach(d => {
         let clienteStr = String(d.cliente || "Sin Nombre");
+        const _nm = window._nombreManualPorCuit[String(d.cuit || '').replace(/\D/g, '')];
+        if (_nm) clienteStr = _nm;                                   // nombre cambiado a mano: gana
         if (d.cuit && !clienteStr.includes("⚠️ IMPORTADO")) cuitDic[d.cuit] = clienteStr;
         d.fechaLimpia = limpiarFecha(d.fecha);
         const partes  = d.fechaLimpia.split('/');
@@ -1263,6 +1409,8 @@ let tempDocParaFactura = null;
 async function cambiarEstado(id, nuevoValor, tipoCambiado) {
     const doc = documentosGuardados.find(i => i.id === id);
     if (!doc) return;
+    // Foto del estado anterior: si el guardado falla, se vuelve a esto
+    const previo = { estado: doc.estado, pagado: doc.pagado, numFactura: doc.numFactura, tipoDoc: doc.tipoDoc };
     
     if (tipoCambiado === 'estado') {
         if (nuevoValor === 'Anulado') {
@@ -1271,11 +1419,11 @@ async function cambiarEstado(id, nuevoValor, tipoCambiado) {
                 mensaje: `${doc.cliente}\n${doc.numFactura || ''}\nQuedará marcado como Anulado.`,
                 icono: '🚫', color: '#d93025', btnOk: 'Anular', btnCancel: 'Cancelar'
             });
-            if (!ok) { renderizarTarjetas(); return; }
+            if (!ok) { refrescarListaQuieto(); return; }
             doc.estado = 'Anulado';
         } else if ((nuevoValor === 'Facturado / Aprobado' || nuevoValor === 'Facturado')
                    && !(doc.numFactura && !/anulad/i.test(doc.numFactura))) {
-            tempDocParaFactura = { id: id, nuevoValor: nuevoValor };
+            tempDocParaFactura = { id: id, nuevoValor: nuevoValor, previo: previo };
             document.getElementById('input-modal-factura').value = ""; 
             const modal = document.getElementById('modalFactura');
             modal.style.display = 'flex';
@@ -1286,30 +1434,25 @@ async function cambiarEstado(id, nuevoValor, tipoCambiado) {
         }
         
         // 🔥 ACTUALIZACIÓN INMEDIATA SIN BLOQUEAR PANTALLA 🔥
-        renderizarTarjetas();
-        ejecutarGuardadoDeEstado(doc, true); // Guardado fantasma en Google
+        refrescarListaQuieto();
+        ejecutarGuardadoDeEstado(doc, true, previo); // Guardado fantasma en Google
         return;
     }
     
     if (tipoCambiado === 'pagado') {
         doc.pagado = nuevoValor;
         // 🔥 ACTUALIZACIÓN INMEDIATA SIN BLOQUEAR PANTALLA 🔥
-        renderizarTarjetas();
-        ejecutarGuardadoDeEstado(doc, true); // Guardado fantasma en Google
+        refrescarListaQuieto();
+        ejecutarGuardadoDeEstado(doc, true, previo); // Guardado fantasma en Google
         return;
     }
     
-    // 🔥 ACTUALIZACIÓN RÁPIDA DE LA ETIQUETA SIN REINICIAR LA LISTA 🔥
+    // 🔥 CAMBIO DE TIPO: se actualiza etiqueta, contadores y filtros al instante, sin mover la lista 🔥
     if (tipoCambiado === 'tipoDoc') {
         doc.tipoDoc = nuevoValor;
         doc._tipo = clasificarDocumento(doc); 
-        
-        const badgeViejo = document.getElementById(`badge-tipo-${id}`);
-        if (badgeViejo) {
-            badgeViejo.outerHTML = badgeTipoDoc(doc._tipo, doc);
-        }
-        
-        ejecutarGuardadoDeEstado(doc, true);
+        refrescarListaQuieto();
+        ejecutarGuardadoDeEstado(doc, true, previo);
         return;
     }
 }
@@ -1333,6 +1476,7 @@ function confirmarModalFactura() {
     const doc = documentosGuardados.find(i => i.id === tempDocParaFactura.id);
     if (!doc) return;
     
+    const previoFact = tempDocParaFactura.previo || { estado: doc.estado, pagado: doc.pagado, numFactura: doc.numFactura, tipoDoc: doc.tipoDoc };
     doc.estado = tempDocParaFactura.nuevoValor;
     doc.numFactura = facturaFinal; // Guardamos con el nuevo formato seguro
     
@@ -1340,7 +1484,9 @@ function confirmarModalFactura() {
     modal.classList.remove('mostrar');
     setTimeout(() => { modal.style.display = 'none'; tempDocParaFactura = null; }, 300);
     
-    ejecutarGuardadoDeEstado(doc);
+    // 🔥 Se ve YA en la lista; el guardado en Google corre en segundo plano 🔥
+    refrescarListaQuieto();
+    ejecutarGuardadoDeEstado(doc, true, previoFact);
 }
 
 // Función que se ejecuta si tocás "Cancelar"
@@ -1350,10 +1496,10 @@ function cerrarModalFactura() {
     setTimeout(() => { modal.style.display = 'none'; tempDocParaFactura = null; }, 300);
     
     // MAGIA: Como canceló, repintamos la pantalla para que el selector vuelva a su estado anterior ("Pendiente" o el que haya tenido) y no quede como "Facturado" por error.
-    renderizarTarjetas();
+    refrescarListaQuieto();
 }
 
-async function ejecutarGuardadoDeEstado(doc, silencioso = false) {
+async function ejecutarGuardadoDeEstado(doc, silencioso = false, previo = null) {
     mostrarMensaje('Actualizando base de datos...', 'cargando');
     try {
         await llamarAPI({ accion: "guardarDocumentoBD", payload: { hoja: HOJA_PRESUPUESTOS, datos: doc } });
@@ -1361,10 +1507,18 @@ async function ejecutarGuardadoDeEstado(doc, silencioso = false) {
         
         // 🔥 Si NO es silencioso, repinta todo. Si ES silencioso, no hace nada visualmente 🔥
         if (!silencioso) {
-            renderizarTarjetas(); 
+            refrescarListaQuieto(); 
         }
     } catch (e) { 
-        mostrarMensaje('❌ Error.', 'error'); 
+        // Si no se pudo guardar, se vuelve a lo de antes para que la pantalla no mienta
+        if (previo) {
+            Object.assign(doc, previo);
+            doc._tipo = clasificarDocumento(doc);
+            refrescarListaQuieto();
+            mostrarMensaje('❌ No se pudo guardar, se restauró el valor anterior. Revisá la conexión.', 'error');
+        } else {
+            mostrarMensaje('❌ Error.', 'error'); 
+        }
     }
 }
 
@@ -1373,6 +1527,7 @@ function editarDocumento(id) {
     if (!doc) return;
 
     idEditando = doc.id;
+    window._volverA = { id: doc.id, scrollY: window.scrollY };       // para volver al mismo lugar al guardar
     document.getElementById('input-gym').value = doc.cliente;
     
     // 🔥 CARGAR CUIT SI EXISTE 🔥
@@ -1383,7 +1538,7 @@ function editarDocumento(id) {
     if (modoApp === 'ofertas') {
         document.getElementById('informe-frecuencia').value = doc.atributoExtra;
     } else {
-        document.getElementById('input-fecha-presup').value = doc.fecha;
+        document.getElementById('input-fecha-presup').value = limpiarFecha(doc.fecha);
     }
     
     document.getElementById('lista-maquinas-dom').innerHTML = '';
@@ -1529,7 +1684,8 @@ async function ejecutarEliminacionReal() {
         await llamarAPI({ accion: "eliminarDocumentoBD", payload: { hoja: hojaReq, id: idLocal } });
         // Recargamos la lista
         documentosGuardados = documentosGuardados.filter(doc => doc.id !== idLocal);
-        renderizarTarjetas();
+        if (window._docsPorHoja && window._docsPorHoja[hojaReq]) window._docsPorHoja[hojaReq] = documentosGuardados;
+        refrescarListaQuieto();
         mostrarMensaje('✅ Documento eliminado con éxito.', 'exito');
     } catch (e) {
         mostrarMensaje('❌ Error al eliminar. Intente de nuevo.', 'error');

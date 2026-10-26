@@ -14,6 +14,7 @@
 //    guardarNoAbonado      {fila|null,gym,cuit,correo,
 //                           gymAnterior,cuitAnterior,
 //                           renombrarFacturas}                  → {fila,gym,cuit,correo,facturasActualizadas}
+//    renombrarClientePorCuit {cuit,nombre} (lo usa inf-docs al editar un nombre en las facturas)
 //    eliminarNoAbonado     {fila}                               → {ok:true}
 //    obtenerCandidatosNoAbonados {}                             → [{gym,cuit,facturas,sinNombre}]
 //    importarNoAbonados    {lista:[{gym,cuit,correo}]}          → {agregados, omitidos}
@@ -412,6 +413,9 @@
         window._iclFiltrar(document.getElementById('icl-buscar') ? document.getElementById('icl-buscar').value : '');
     }
 
+    // inf-docs lo llama cuando se cambia un nombre desde las facturas (para que se vea acá también)
+    window._iclRefrescar = function () { if (document.getElementById('icl-cuerpo')) pintarCuerpo(); };
+
     window._iclReintentarNA = async function () {
         await cargarNoAbonados(true);
         pintarCuerpo();
@@ -446,9 +450,7 @@
           +   '<label>Correo(s)</label>'
           +   '<textarea id="icl-f-correo" placeholder="uno@mail.com, otro@mail.com">' + esc(it.correo) + '</textarea>'
           +   '<div class="icl-ayuda">Si hay más de uno, separalos con coma o salto de línea.</div>'
-          +   (esNuevo ? '' :
-                '<label class="icl-check"><input type="checkbox" id="icl-f-renombrar" checked>'
-              + '<span>Si cambio el nombre o el CUIT, actualizarlo también en las facturas guardadas de este cliente</span></label>')
+          +   '<div class="icl-ayuda" style="margin-top:12px;">🔄 Al guardar, el nombre y el CUIT se actualizan también en todas sus facturas.</div>'
           +   '<div class="icl-err" id="icl-f-err"></div>'
           +   '<div class="icl-form-btns">'
           +     '<button class="icl-b-cancel" onclick="_iclCerrarCapa()">Cancelar</button>'
@@ -476,8 +478,6 @@
         const cuitIngresado = document.getElementById('icl-f-cuit').value.trim();
         const cuitDig = soloDigitos(cuitIngresado);
         const correo = normalizarCorreos(document.getElementById('icl-f-correo').value);
-        const chk = document.getElementById('icl-f-renombrar');
-        const renombrar = !!(chk && chk.checked);
 
         if (!gym) return error('Ingresá el nombre del cliente.');
         if (cuitIngresado && cuitDig.length !== 11) return error('El CUIT debe tener 11 dígitos (ej: 30-12345678-9).');
@@ -494,6 +494,12 @@
 
         const previo = fila ? (window.listaNoAbonados || []).find(a => Number(a.fila) === Number(fila)) : null;
         const cuitFinal = cuitDig ? formatearCuit(cuitDig) : '';
+
+        // Se actualizan las facturas cuando cambia el nombre o el CUIT (y el nombre es uno real, no el "⚠️ SIN NOMBRE")
+        const cuitAntDig = previo ? soloDigitos(previo.cuit) : '';
+        const nombreReal = !/IMPORTADO|ARCA|⚠|^sin nombre$/i.test(gym);
+        const huboCambio = !previo || gym !== previo.gym || cuitDig !== cuitAntDig;
+        const renombrar  = nombreReal && huboCambio && !!(cuitDig || cuitAntDig || (previo && previo.gym));
 
         btn.disabled = true; btn.textContent = 'Guardando…';
         try {
@@ -515,9 +521,14 @@
             if (idx >= 0) window.listaNoAbonados[idx] = guardado; else window.listaNoAbonados.push(guardado);
 
             let extra = '';
-            if (renombrar && cuitDig) {
+            if (renombrar) {
                 const n = (r && Number(r.facturasActualizadas)) || 0;
-                actualizarFacturasLocal(cuitDig, guardado.gym);
+                // se ve ya en la lista de facturas (sin recargar)
+                if (typeof window.aplicarNombreClienteEnTodo === 'function') {
+                    window.aplicarNombreClienteEnTodo(guardado.cuit, guardado.gym, previo ? previo.cuit : '');
+                } else if (cuitDig) {
+                    actualizarFacturasLocal(cuitDig, guardado.gym);
+                }
                 if (n) extra = ' · ' + n + ' factura' + (n > 1 ? 's' : '') + ' actualizada' + (n > 1 ? 's' : '');
             }
             cerrarCapa();
